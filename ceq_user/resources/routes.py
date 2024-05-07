@@ -9,6 +9,8 @@ from business.view import CreateBusinessAudit, BusinessAuditDetails, GetBusiness
     DeleteBusinessAudit, UpdateBusinessAudit, AssignAudit, BusinessAuditors, UploadExcelBusinessAudit
     
 from over_view.view import AuditDashboardQuarter, AuditDashboardMonth, OverViewReport
+from consumer.report_view import RegionComplianceReport, RegionComplianceReportGraph, RegionComplianceReportSharedZone, \
+    RegionNonComplianceTopContributor, SharedzoneNonComplianceTopContributor, OtherNonComplianceTopContributor
 
 
 def initialize_routes(app):
@@ -61,5 +63,14 @@ def initialize_routes(app):
     api.add_resource(AuditDashboardMonth, '/ceq/over_view/month_report')
     api.add_resource(OverViewReport, '/ceq/over_view/report')
     api.add_resource(AuditDashboardQuarter, '/ceq/over_view/quarter_report')
-     
+
+    #report compliance
+    api.add_resource(RegionComplianceReport, '/ceq/report/region/complaince')
+    api.add_resource(RegionComplianceReportGraph, '/ceq/report/region/complaince/graph')
+    api.add_resource(RegionComplianceReportSharedZone, '/ceq/report/region/complaince/sharedzone')
+    api.add_resource(RegionNonComplianceTopContributor, '/ceq/report/region/non-complaince/top-contributor')
+    api.add_resource(SharedzoneNonComplianceTopContributor, '/ceq/report/region/non-complaince/shared_zone')
+    api.add_resource(OtherNonComplianceTopContributor, '/ceq/report/region/non-complaince/others')
+
+
     
