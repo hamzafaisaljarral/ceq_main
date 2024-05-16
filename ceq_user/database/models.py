@@ -127,7 +127,6 @@ class AuditData(Document):
     }
 
 
-
 class BusinessAudit(Document):
     sn = IntField(default=0)
     date_of_visit = DateTimeField(default=None)
@@ -151,10 +150,10 @@ class BusinessAudit(Document):
     cbcm_close_date = DateTimeField(default=None)
     latitude = StringField(default="")
     longitude = StringField(default="")
-    wfm_emp_id = IntField(default=0)
+    wfm_emp_id = StringField(default="")
     tech_name = StringField(default="")
-    party_id = IntField(default=0)
-    wfm_task_id = IntField(default=0)
+    party_id = StringField(default="")
+    wfm_task_id = StringField(default="")
     wfm_wo_number = IntField(default=0)
     team_desc = StringField(default="")
     ceq_auditor_name = StringField(default="")
@@ -174,11 +173,15 @@ class BusinessAudit(Document):
     ceqv05_sub_inst_cpe = StringField(default="")
     ceqv06_sub_labelling = StringField(default="")
     sub_cable_inst = IntField(default=0)
-    sub_inst_ont = IntField(default=0)
+    sub_inst_ont = StringField(default="")
     sub_inst_wastes_left_uncleaned = IntField(default=0)
     existing_sub_inst_not_rectified = IntField(default=0)
-    sub_inst_cpe = IntField(default=0)
-    sub_labelling = IntField(default=0)
+    sub_inst_cpe = StringField(default="")
+    sub_labelling = StringField(default="")
     total = IntField(default=0)
-    compliance = StringField()
+    compliance = StringField(default="")
     status = StringField(default="Pending")
+    superviser_comment = StringField(default="")
+    signature = StringField(default="")
+    
+    

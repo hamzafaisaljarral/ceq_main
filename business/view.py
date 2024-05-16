@@ -1,6 +1,6 @@
 from ceq_user.database.models import User, BusinessAudit 
 from ceq_user.resources.errors import unauthorized
-from flask import request, jsonify
+from flask import request, jsonify, send_file
 from flask_restful import Resource
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from mongoengine import DoesNotExist
@@ -13,6 +13,7 @@ import uuid
 import json
 import os
 import math
+import csv
 
 
 class CreateBusinessAudit(Resource):
@@ -22,7 +23,7 @@ class CreateBusinessAudit(Resource):
             user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
             return unauthorized()
-        if user.role not in ["audit", "supervisor", "admin"] and (user.permission not in ["business", "all"]):
+        if user.role not in ["auditor", "supervisor", "admin"] and (user.permission not in ["business", "all"]):
             return {"message": "Unauthorized access"}, 401
         try:
             image_files = request.files
@@ -37,7 +38,7 @@ class CreateBusinessAudit(Resource):
             setattr(audit_document, "date_of_visit", date_time)
             # Process image files
             for image_key in image_files:
-                if image_key in ["photo1", "photo2", "photo3", "photo4", "photo5", "photo6"]:
+                if image_key in ["photo1", "photo2", "photo3", "photo4", "photo5", "photo6", "signature"]:
                     file_data = image_files[image_key]
                     if file_data and file_data.filename != '':
                         unique_filename = str(uuid.uuid4()) + '_' + secure_filename(file_data.filename)
@@ -119,18 +120,20 @@ class UploadExcelBusinessAudit(Resource):
                     ceqv05_sub_inst_cpe=record.get("CEQV05 Substandard Installation of CPE "),
                     ceqv06_sub_labelling=record.get("CEQV06 Substandard Labelling"),
                     sub_cable_inst=record.get("Substandard Cable handling and installation"),
-                    sub_inst_ont=record.get("CEQV02 Substandard Installation of ONT.1"),
+                    sub_inst_ont=str(record.get("CEQV02 Substandard Installation of ONT.1")),
                     sub_inst_wastes_left_uncleaned=record.get(" Installation Wastes Left Uncleaned"),
                     existing_sub_inst_not_rectified=record.get("Existing Substandard Installation Yest Rectified Yesr Escalated to Supervisor"),
-                    sub_inst_cpe=record.get("Substandard Installation of CPE "),
-                    sub_labelling=record.get("Substandard Labelling"),
+                    sub_inst_cpe=str(record.get("Substandard Installation of CPE ")),
+                    sub_labelling=str(record.get("Substandard Labelling")),
                     compliance=record.get("COMPLIANCE")
-                )                             
-                business_audit.save()                  
+                )   
+                print("###############")                          
+                business_audit.save() 
+                print("@@@@@@@@@@@@@@")                 
             return {'message': 'excel data successfully processed'}, 201
         except Exception as e:  
             print(record)         
-            return jsonify({"message": "Error: {}".format(str(e))})
+            return {"message": "Error: {}".format(str(e))}, 500
         
         
         
@@ -141,24 +144,26 @@ class BusinessAuditDetails(Resource):
             user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
             return unauthorized()
-        if (user.role not in ["supervisor", "audit", "admin"]) and (user.permission not in ["business", "all"]):
-            return {"message": "'error': 'Unauthorized access'"}, 401 
+        if (user.role not in ["supervisor", "auditor", "admin"]) and (user.permission not in ["business", "all"]):
+            return {"message": "Unauthorized access"}, 401
         try:            
             audit_id = ObjectId(request.args.get('audit_id'))
             audit_data = BusinessAudit.objects(id=audit_id).first()
             if audit_data is None:
                 return {"message": "Audit Id Not Found"}, 404
-            if audit_data:
-                audit_json = json.loads(audit_data.to_json())
-                if "date_of_visit" in audit_json:
-                    # Convert date_of_visit from Unix timestamp to datetime string
-                    date_of_visit_unix = audit_json["date_of_visit"]["$date"]
-                    date_of_visit_str = datetime.fromtimestamp(date_of_visit_unix / 1000).strftime('%Y-%m-%d %H:%M:%S')
-                    audit_json["date_of_visit"] = date_of_visit_str
-            return jsonify(audit_json)   
+            if user.role == "auditor":
+                if audit_data.ceq_auditor_name != user.username:
+                    return {"message": "Unauthorized access to this audit"}, 401
+            audit_json = json.loads(audit_data.to_json())
+            if "date_of_visit" in audit_json:
+                # Convert date_of_visit from Unix timestamp to datetime string
+                date_of_visit_unix = audit_json["date_of_visit"]["$date"]
+                date_of_visit_str = datetime.fromtimestamp(date_of_visit_unix / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                audit_json["date_of_visit"] = date_of_visit_str
+            return jsonify(audit_json)  
         except Exception as e:
             print("Exception: ", e)
-            return {'message': 'Error occurred while retrieving audit'}, 500  
+            return {'message': 'Error occurred while retrieving audit'}, 500 
         
 
 class GetBusinessAuditList(Resource):
@@ -168,7 +173,7 @@ class GetBusinessAuditList(Resource):
             user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
             return unauthorized()
-        if user.role not in ["audit", "supervisor", "admin"] and (user.permission not in ["business", "all"]):
+        if user.role not in ["auditor", "supervisor", "admin"] and (user.permission not in ["business", "all"]):
             return {"message": "'error': 'Unauthorized access'"}, 401 
         try:      
             data = request.get_json()
@@ -192,18 +197,19 @@ class GetBusinessAuditList(Resource):
                 query['date_of_visit'] = {'$lte': end_date}
             if region:
                 query['region'] = region
+            if status:
+                query["status"] = status 
             if customer_name:
                 query['customer_name'] = customer_name  
             if account_no:
                 query['account_no'] = account_no                     
             if compliance:
                 query['compliance'] = compliance 
-            if user.role != "supervisor":
-                query["ceq_auditor_name"] = user.name
+            if user.role not in ["supervisor","admin"]:
+                query["ceq_auditor_name"] = user.username
             audit_data = BusinessAudit.objects(__raw__=query).order_by('-date_of_visit')
             total_records = audit_data.count()
             total_pages = math.ceil(total_records / per_page)  
-            # Apply pagination after counting total records
             audit_data = audit_data.skip((page - 1) * per_page).limit(per_page)
             if audit_data is None:
                 return {"message": "Audit's Not Found"}, 404
@@ -237,7 +243,7 @@ class UpdateBusinessAudit(Resource):
             user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
             return unauthorized()
-        if user.role not in ["audit", "supervisor", "admin"] and (user.permission not in ["business", "all"]):
+        if user.role not in ["auditor", "supervisor", "admin"] and (user.permission not in ["business", "all"]):
             return {"message": "'error': 'Unauthorized access'"}, 401 
         try:
             image_file = request.files 
@@ -247,7 +253,7 @@ class UpdateBusinessAudit(Resource):
                 return {'message': 'Audit ID not provided'}, 400
             # Retrieve audit data by audit_id
             audit_document = BusinessAudit.objects(id=audit_id).first()
-            if audit_document.ceq_auditor_name != user.username:
+            if audit_document.ceq_auditor_name != user.username and user.role not in ["supervisor", "admin"]:
                 return {"message": "'error': 'Unauthorized user'"}, 401
             if audit_document is None:
                 return {'message': 'Audit ID Not Found'}, 404
@@ -275,13 +281,12 @@ class UpdateBusinessAudit(Resource):
                         unique_filename = str(uuid.uuid4()) + '_' + secure_filename(file_data.filename)                
                         file_path = os.path.join("/app1/DSCE/PortalGateway/estore_backend/public/uploads/ceq/", str(unique_filename))
                         print("file_path ",file_path)
-                        
                         send_image_to_server(file_data, file_path)
                         value = "https://ossdev.etisalat.ae:8400/public/uploads/ceq/"+str(unique_filename)
                         print("value  ")
                         setattr(audit_document, image_key, value)
             # Save the updated audit document
-            setattr(audit_document, "ceq_auditor_name", user.username)
+            setattr(audit_document, "ceq_auditor_name", audit_document.ceq_auditor_name)
             audit_document.save()
             return {'message': 'Audit record updated successfully'}, 200
         except Exception as e:
@@ -319,6 +324,7 @@ class DeleteBusinessAudit(Resource):
         except Exception as e:
             print("Exception: ", e)
             return {"message": "Error: {}".format(str(e))}, 500
+        
 
 class BusinessAuditors(Resource):
     @jwt_required()
@@ -327,13 +333,15 @@ class BusinessAuditors(Resource):
             user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
             return unauthorized()
-        if user.role != "supervisor" and user.permission not in ["business", "all"]:
-            return {"message": "Unauthorized access"}, 401
+        if user.role not in ["supervisor", "admin"]:
+            print(user.role)
+            if user.permission not in ["business", "all"]:
+                return {"message": "Unauthorized access"}, 401
         try:
-            if user.permission == "all":
-                auditor_list = User.objects(permission__in=["business", "all"])
+            if user.permission == "all"  or "business":
+                auditor_list = User.objects(permission='all', role="auditor")
             else:
-                auditor_list = User.objects(permission='business')
+                auditor_list = User.objects(permission='business', role="auditor")
             if not auditor_list:
                 return {"message": "No auditor found"}, 404
             response = [json.loads(auditor.to_json()) for auditor in auditor_list]            
@@ -396,3 +404,51 @@ def send_image_to_server(image_file, file_path):
     except Exception as e:
         print(e)
         return {'error': str(e)}
+
+
+class BusinessAuditDownload(Resource):
+    def get(self):
+        try:      
+            start_date_str = request.args.get('start_date')
+            end_date_str = request.args.get('end_date')
+            region = request.args.get('region')
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+            query = {}
+            if start_date and end_date:
+                query['date_of_visit'] = {'$gte': start_date, '$lte': end_date}
+            elif start_date:
+                query['date_of_visit'] = {'$gte': start_date}
+            elif end_date:
+                query['date_of_visit'] = {'$lte': end_date}
+            if region:
+                query['region'] = region
+            audit_data = BusinessAudit.objects(__raw__=query).order_by('-date_of_visit')
+            total_records = audit_data.count()
+            if audit_data is None:
+                return {"message": "Audit's Not Found"}, 404
+            respose = []                   
+            if audit_data:
+                audit_json = json.loads(audit_data.to_json())
+                for records in audit_json:
+                    if "date_of_visit" in records:
+                        # Convert date_of_visit from Unix timestamp to datetime string
+                        date_of_visit_unix = records["date_of_visit"]["$date"]
+                        date_of_visit_str = datetime.fromtimestamp(date_of_visit_unix / 1000).strftime('%Y-%m-%d %H:%M:%S')
+                        records["date_of_visit"] = date_of_visit_str
+                        del records["_id"]
+                        respose.append(records)
+                csv_file_path = 'exported_business_data.csv'
+                with open(csv_file_path, 'w', newline='') as file:
+                    fieldnames = respose[0].keys() if respose else []
+                    writer = csv.DictWriter(file, fieldnames=fieldnames)
+                    writer.writeheader()
+                    for row in respose:
+                        writer.writerow(row)
+                # Return the CSV file for download
+                return send_file(csv_file_path, as_attachment=True)
+            else:      
+                return {'message': 'No audits found with provided filters'}, 404
+        except Exception as e:
+            print("Exception: ", e)
+            return {'message': 'Error occurred while retrieving audit'}, 500  

@@ -63,9 +63,8 @@ class RegionComplianceReportGraph(Resource):
 
 
 class RegionComplianceReportSharedZone(Resource):
-    # @jwt_required()
+    @jwt_required()
     def get(self):
-
 
         try:
             user = User.objects.get(id=get_jwt_identity()['id'])
@@ -275,20 +274,21 @@ class AuditedTechnicians(Resource):
                 "non_cooperative_count": non_cooperative_count
             })
 
-        return jsonify({'category results': final_output})
+        return jsonify({'category_results': final_output})
 
 
 class ComplianceandNonComplianceImages(Resource):
-    # @jwt_required()
+    @jwt_required()
     def get(self):
-        # try:
-        #    user = User.objects.get(id=get_jwt_identity()['id'])
-        # except DoesNotExist:
-        #    return unauthorized()
-        # if user.role not in ["supervisor", "admin"] and user.permission not in ["consumer", "all"]:
-        #    return {"message": "Unauthorized access"}, 401
+        try:
+           user = User.objects.get(id=get_jwt_identity()['id'])
+        except DoesNotExist:
+           return unauthorized()
+        if user.role not in ["supervisor", "admin"] and user.permission not in ["consumer", "all"]:
+           return {"message": "Unauthorized access"}, 401
         start_date_str = request.args.get('start_date')
         end_date_str = request.args.get('end_date')
+        region = request.args.get('region')
 
         try:
             # Convert date strings to datetime objects
@@ -296,6 +296,6 @@ class ComplianceandNonComplianceImages(Resource):
             end_date = parser.parse(end_date_str)
         except ValueError:
             return jsonify({'error': 'Invalid date format'}), 400
-        result = get_images_data(start_date,end_date)
+        result = get_images_data(start_date,end_date, region)
 
-        return jsonify({'image url': result})
+        return jsonify({'image_url': result})

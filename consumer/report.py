@@ -100,17 +100,18 @@ def total_wr(start_date, end_date):
     return total_audits_wr_result
 
 
-def calculate_percentage_wr(start_date, end_date):
-    # Get the total errors for the "WR" region
+def calculate_percentage_shared_zone(start_date, end_date):
+    # Get the total errors for the "shared" region
     error_results = errors_by_region(start_date, end_date)
-    total_errors_wr = next((result['ErrorCount'] for result in error_results if result['_id'] == 'WR'), 0)
+    total_errors_by_region = sum(result['ErrorCount'] for result in error_results)
+    print(error_results)
 
     # Get the total audits for the "WR" region
     total_audits_wr = total_wr(start_date, end_date)
 
     # Calculate the percentage for the "WR" region
     if total_audits_wr > 0:
-        percentage_wr = (total_errors_wr / (6 * total_audits_wr)) * 100
+        percentage_wr = (total_errors_by_region / (6 * total_audits_wr)) * 100
     else:
         percentage_wr = 0
 
@@ -185,58 +186,40 @@ def errors_by_region(start_date, end_date):
             '$match': {
                 'createdDate': {'$gte': start_date, '$lte': end_date},
                 'region': {'$in': regions},
-                'status': 'Approved'  # Ensure the audit is approved
+                'status': 'Approved'
             }
         },
+        {'$unwind': '$ceqvs'},  # Unwind the ceqvs first to facilitate easier processing
         {
             '$project': {
                 'region': 1,
-                'errors': {
-                    '$map': {
-                        'input': '$ceqvs',
-                        'as': 'ceqv',
-                        'in': '$$ceqv.violation_type'  # Directly use the boolean value of violation_type
-                    }
-                }
-            }
-        },
-        {
-            '$addFields': {
-                'errorPresent': {
-                    '$reduce': {
-                        'input': '$errors',
-                        'initialValue': False,
-                        'in': {'$or': ['$$value', '$$this']}  # Check if any element in errors is True
-                    }
-                }
+                'errorPresent': '$ceqvs.violation_type'  # Directly use the boolean value of violation_type
             }
         },
         {
             '$group': {
                 '_id': '$region',
-                'ErrorCount': {'$sum': {'$cond': ['$errorPresent', 1, 0]}}  # Count only if errorPresent is True
+                'ErrorCount': {'$sum': {'$cond': ['$errorPresent', 1, 0]}}  # Increment count if errorPresent is True
             }
         },
         {
             '$project': {
-                '_id': 1,
-                'ErrorCount': 1
+                'region': '$_id',
+                'ErrorCount': 1,
+                '_id': 0
             }
         }
     ]
 
-    # Create a dictionary to map region names to error counts
-    error_counts = {region: 0 for region in regions}
+    results = list(AuditData.objects.aggregate(pipeline))
+    final_results = {region: 0 for region in regions}  # Initialize all regions with zero count
 
-    # Get the error counts for each region from the aggregation result
-    results = AuditData.objects.aggregate(*pipeline)
+    # Update counts based on aggregation results
     for result in results:
-        error_counts[result['_id']] = result['ErrorCount']
+        final_results[result['region']] = result['ErrorCount']
 
-    # Convert the dictionary to a list of dictionaries
-    final_results = [{'_id': region, 'ErrorCount': error_counts[region]} for region in regions]
-
-    return final_results
+    # Convert the dictionary to a list of dictionaries for output
+    return [{'region': k, 'ErrorCount': v} for k, v in final_results.items()]
 
 
 def total_audits_regions(start_date, end_date):
@@ -271,7 +254,7 @@ def total_audits_regions(start_date, end_date):
 def calculate_percentage(start_date, end_date):
 
     error_results = errors_by_region(start_date, end_date)
-    total_errors_by_region = {result['_id']: result['ErrorCount'] for result in error_results}
+    total_errors_by_region = {result['region']: result['ErrorCount'] for result in error_results}
 
     # Get total number of audits for each region
     total_audits_by_region_result = total_audits_regions(start_date, end_date)
@@ -327,7 +310,7 @@ def calculate_compliance_graph():
 
 def calculate_compliance_for_shared_zone(start_date, end_date, region='WR'):
 
-    percentage_results = calculate_percentage_wr(start_date, end_date)
+    percentage_results = calculate_percentage_shared_zone(start_date, end_date)
 
     if isinstance(percentage_results, dict):
         wr_percentage = percentage_results.get(region, 0)
@@ -338,8 +321,8 @@ def calculate_compliance_for_shared_zone(start_date, end_date, region='WR'):
     result = {}
     compliance = 100 - wr_percentage
     non_complaince = wr_percentage
-    result['compliance'] = round(compliance, 2)
-    result['non_compliance'] = non_complaince
+    result['Non_compliance'] = round(compliance, 2)
+    result['compliance'] = non_complaince
 
     return result
 
@@ -359,7 +342,7 @@ def get_top_error_codes_by_region(start_date, end_date):
         {
             '$match': {
                 "ceqvs.remarks": {"$ne": "", "$exists": True},
-                "ceqvs.violation_type": True
+                "ceqvs.violation_type": True  # Filter for non-compliance
             }
         },
         {
@@ -375,7 +358,7 @@ def get_top_error_codes_by_region(start_date, end_date):
         {
             '$group': {
                 '_id': '$_id.region',
-                'top_errors': {'$push': {
+                'violations': {'$push': {
                     'violation_code': '$_id.violation_code',
                     'count': '$count'
                 }}
@@ -383,32 +366,13 @@ def get_top_error_codes_by_region(start_date, end_date):
         },
         {
             '$project': {
-                'top_errors': {
-                    '$slice': ['$top_errors', 5]
-                }
-            }
-        },
-        {
-            '$addFields': {
-                'top_5_errors': {
-                    '$map': {
-                        'input': {'$range': [0, {'$min': [5, {'$size': '$top_errors'}]}]},
-                        'as': 'index',
-                        'in': {'$arrayElemAt': ['$top_errors', '$$index']}
-                    }
-                }
-            }
-        },
-        {
-            '$project': {
-                '_id': 1,
-                'top_5_errors': 1
+                'top_5_errors': {'$slice': ['$violations', 5]}
             }
         }
     ]
 
-    results = AuditData.objects.aggregate(*pipeline)
-    return list(results)
+    results = list(AuditData.objects.aggregate(pipeline))
+    return results
 
 
 def get_error_descriptions(error_codes):
@@ -793,36 +757,42 @@ def audited_data_for_technicians_region_wise(start_date, end_date):
     return results
 
 
-def get_images_data(start_date, end_date):
+def get_images_data(start_date, end_date, region):
     pipeline = [
         {"$match": {
             "createdDate": {"$gte": start_date, "$lte": end_date},
-            "status": "Approved"
+            "status": "Approved",
+            "region": {"$exists": ""} if region is None else region
         }},
         {"$unwind": "$ceqvs"},
         {"$match": {
             "ceqvs.violation_type": {"$exists": True},
-            "ceqvs.image": {"$ne": ""}
+            "ceqvs.image": {"$ne": ""},
+            "ceqvs.remarks":{"$ne" : ""}
         }},
         {
             "$group": {
                 "_id": "$ceqvs.violation_type",
-                "top_images": {"$push": "$ceqvs.image"}
+                "top_images": {"$push": "$ceqvs.image"},
+                "remarks":{"$push": "$ceqvs.remarks"}
             }
         },
         {
             "$project": {
-                "top_images": {"$slice": ["$top_images", 2]}  # MongoDB 3.4 supports $slice
+                "top_images": {"$slice": ["$top_images", 2]},  # MongoDB 3.4 supports $slice
+                "remarks" : {"$slice" : ["$remarks", 2]}
             }
         }
     ]
 
     results = list(AuditData.objects.aggregate(pipeline))
+    print(results)
     # Format results into more readable format
     formatted_results = {}
     for item in results:
-        key = 'Compliance' if not item['_id'] else 'Non-Compliance'
+        key = 'Compliance' if not item['_id'] else 'Non_Compliance'
         formatted_results[key] = item['top_images']
+        formatted_results[key].append(item['remarks'])
 
     return formatted_results
 
