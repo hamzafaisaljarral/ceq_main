@@ -126,17 +126,16 @@ class UploadExcelBusinessAudit(Resource):
                     sub_inst_cpe=str(record.get("Substandard Installation of CPE ")),
                     sub_labelling=str(record.get("Substandard Labelling")),
                     compliance=record.get("COMPLIANCE")
-                )   
-                print("###############")                          
-                business_audit.save() 
-                print("@@@@@@@@@@@@@@")                 
+                )
+                print("###############")
+                business_audit.save()
+                print("@@@@@@@@@@@@@@")
             return {'message': 'excel data successfully processed'}, 201
         except Exception as e:  
             print(record)         
             return {"message": "Error: {}".format(str(e))}, 500
         
-        
-        
+
 class BusinessAuditDetails(Resource):
     @jwt_required()
     def get(self):
@@ -160,10 +159,10 @@ class BusinessAuditDetails(Resource):
                 date_of_visit_unix = audit_json["date_of_visit"]["$date"]
                 date_of_visit_str = datetime.fromtimestamp(date_of_visit_unix / 1000).strftime('%Y-%m-%d %H:%M:%S')
                 audit_json["date_of_visit"] = date_of_visit_str
-            return jsonify(audit_json)  
+            return jsonify(audit_json)
         except Exception as e:
             print("Exception: ", e)
-            return {'message': 'Error occurred while retrieving audit'}, 500 
+            return {'message': 'Error occurred while retrieving audit'}, 500
         
 
 class GetBusinessAuditList(Resource):
@@ -198,7 +197,7 @@ class GetBusinessAuditList(Resource):
             if region:
                 query['region'] = region
             if status:
-                query["status"] = status 
+                query["status"] = status
             if customer_name:
                 query['customer_name'] = customer_name  
             if account_no:
@@ -209,7 +208,7 @@ class GetBusinessAuditList(Resource):
                 query["ceq_auditor_name"] = user.username
             audit_data = BusinessAudit.objects(__raw__=query).order_by('-date_of_visit')
             total_records = audit_data.count()
-            total_pages = math.ceil(total_records / per_page)  
+            total_pages = math.ceil(total_records / per_page)
             audit_data = audit_data.skip((page - 1) * per_page).limit(per_page)
             if audit_data is None:
                 return {"message": "Audit's Not Found"}, 404
@@ -232,8 +231,7 @@ class GetBusinessAuditList(Resource):
                 return {'message': 'No audits found with provided filters'}, 404      
         except Exception as e:
             print("Exception: ", e)
-            return {'message': 'Error occurred while retrieving audit'}, 500  
-
+            return {'message': 'Error occurred while retrieving audit'}, 500
 
 
 class UpdateBusinessAudit(Resource):
@@ -324,7 +322,7 @@ class DeleteBusinessAudit(Resource):
         except Exception as e:
             print("Exception: ", e)
             return {"message": "Error: {}".format(str(e))}, 500
-        
+
 
 class BusinessAuditors(Resource):
     @jwt_required()
@@ -408,7 +406,7 @@ def send_image_to_server(image_file, file_path):
 
 class BusinessAuditDownload(Resource):
     def get(self):
-        try:      
+        try:
             start_date_str = request.args.get('start_date')
             end_date_str = request.args.get('end_date')
             region = request.args.get('region')
@@ -427,7 +425,7 @@ class BusinessAuditDownload(Resource):
             total_records = audit_data.count()
             if audit_data is None:
                 return {"message": "Audit's Not Found"}, 404
-            respose = []                   
+            respose = []
             if audit_data:
                 audit_json = json.loads(audit_data.to_json())
                 for records in audit_json:
@@ -447,8 +445,8 @@ class BusinessAuditDownload(Resource):
                         writer.writerow(row)
                 # Return the CSV file for download
                 return send_file(csv_file_path, as_attachment=True)
-            else:      
+            else:
                 return {'message': 'No audits found with provided filters'}, 404
         except Exception as e:
             print("Exception: ", e)
-            return {'message': 'Error occurred while retrieving audit'}, 500  
+            return {'message': 'Error occurred while retrieving audit'}, 500
