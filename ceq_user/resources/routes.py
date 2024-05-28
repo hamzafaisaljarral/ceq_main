@@ -16,8 +16,8 @@ from business.view import CreateBusinessAudit, BusinessAuditDetails, GetBusiness
 from over_view.view import AuditDashboardQuarter, AuditDashboardMonth, OverViewReport
 from consumer.report_view import RegionComplianceReport, RegionComplianceReportGraph, RegionComplianceReportSharedZone, \
     RegionNonComplianceTopContributor, SharedzoneNonComplianceTopContributor, OtherNonComplianceTopContributor, \
-    CategoryNonComplianceContributor, AuditedTechnicians, ComplianceandNonComplianceImages
-
+    CategoryNonComplianceContributor, AuditedTechnicians, ComplianceandNonComplianceImages, \
+    NonComplianceCategoryLastSixMonths
 
 
 def initialize_routes(app):
@@ -83,6 +83,8 @@ def initialize_routes(app):
     api.add_resource(CategoryNonComplianceContributor, '/ceq/report/region/non-complaince/contributor')
     api.add_resource(AuditedTechnicians, '/ceq/report/region/technician/audits')
     api.add_resource(ComplianceandNonComplianceImages, '/ceq/report/region/images/audits')
+    api.add_resource(NonComplianceCategoryLastSixMonths, '/ceq/report/region/non-complaince/category')
+
 
     #report business compliance and non compliance
     api.add_resource(RegionComplianceBusinessReport, '/ceq/business/report/region')

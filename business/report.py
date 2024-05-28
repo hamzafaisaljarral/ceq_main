@@ -122,7 +122,8 @@ def count_error_codes(start_date, end_date):
         {
             '$project': {
                 '_id': 0,
-                'ceqvo2_sub_inst_ont_count': 1,
+                'ceqv01_sub_cable_inst':1,
+                'ceqv02_sub_inst_ont_count': 1,
                 'ceqv03_sub_inst_wastes_left_uncleaned_count': 1,
                 'ceqv04_existing_sub_inst_not_rectified_count': 1,
                 'ceqv05_sub_inst_cpe_count': 1,
@@ -170,7 +171,6 @@ def overall_compliance_check(start_date, end_date):
             }
         }
     ]
-
 
     result = list(BusinessAudit.objects.aggregate(pipeline))
 
@@ -329,6 +329,7 @@ def count_error_codes_monthwise(start_date, end_date):
                         'date': '$date_of_visit'
                     }
                 },
+                'ceqv01_sub_cable_inst': 1,
                 'ceqvo2_sub_inst_ont': 1,
                 'ceqv03_sub_inst_wastes_left_uncleaned': 1,
                 'ceqv04_existing_sub_inst_not_rectified': 1,
@@ -339,6 +340,9 @@ def count_error_codes_monthwise(start_date, end_date):
         {
             '$group': {
                 '_id': '$yearMonth',
+                'ceqv01_sub_cable_inst_count': {
+                    '$sum': {'$cond': [{'$eq': ['$ceqv01_sub_cable_inst', 'YES']}, 1, 0]}
+                },
                 'ceqvo2_sub_inst_ont_count': {
                     '$sum': {'$cond': [{'$eq': ['$ceqvo2_sub_inst_ont', 'YES']}, 1, 0]}
                 },
@@ -363,7 +367,8 @@ def count_error_codes_monthwise(start_date, end_date):
             '$project': {
                 '_id': 0,
                 'yearMonth': '$_id',
-                'ceqvo2_sub_inst_ont_count': 1,
+                'ceqv01_sub_cable_inst': 1,
+                'ceqv02_sub_inst_ont_count': 1,
                 'ceqv03_sub_inst_wastes_left_uncleaned_count': 1,
                 'ceqv04_existing_sub_inst_not_rectified_count': 1,
                 'ceqv05_sub_inst_cpe_count': 1,
@@ -374,7 +379,6 @@ def count_error_codes_monthwise(start_date, end_date):
 
     result = list(BusinessAudit.objects.aggregate(pipeline))
     return result
-
 
 
 def business_name_with_non_compliance(start_date, end_date):

@@ -75,12 +75,13 @@ def errors_by_region_wr(start_date, end_date):
 
 
 def total_wr(start_date, end_date):
-    region = 'WR'
+    filter_keyword = 'shared zone'
+
     pipeline = [
         {
             '$match': {
                 'createdDate': {'$gte': start_date, '$lte': end_date},
-                'region': region,
+                'name': {'$regex': filter_keyword, '$options': 'i'},  # Case insensitive search for "shared zone"
                 'status': 'Approved'
             }
         },
@@ -267,7 +268,8 @@ def calculate_percentage(start_date, end_date):
             percentage = (total_errors / (6 * total_audits)) * 100
         else:
             percentage = 0
-        percentage_results[region] = round(percentage, 2)
+        formatted_region = region.replace(" ", "_")
+        percentage_results[formatted_region] = round(percentage, 2)
 
     return percentage_results
 
@@ -792,10 +794,67 @@ def get_images_data(start_date, end_date, region):
     for item in results:
         key = 'Compliance' if not item['_id'] else 'Non_Compliance'
         formatted_results[key] = item['top_images']
-        formatted_results[key].append(item['remarks'])
 
     return formatted_results
 
 
+def last_six_month_category_non_compliance(start_date, end_date):
+    categories = ["Tools & Devices", "Vehicles", "Technicians Appearance","Personal Behavior","Field Work Standards","Processes & Policies"]
 
+    pipeline_last_7_months = [
+        {
+            "$match": {
+                "createdDate": {"$gte": start_date, "$lte": end_date},
+                "ceqvs.category_code": {"$in": categories}
+            }
+        },
+        {"$unwind": "$ceqvs"},
+        {"$match": {"ceqvs.violation_type": True}},
+        {
+            "$group": {
+                "_id": {
+                    "category_code": "$ceqvs.category_code",
+                    "violation_code": "$ceqvs.violation_code",
+                    "month": {"$dateToString": {"format": "%Y-%m", "date": "$createdDate"}}
+                },
+                "count": {"$sum": 1}
+            }
+        },
+        {"$sort": {"_id.month": 1, "count": -1}},
+        {
+            "$group": {
+                "_id": {
+                    "category_code": "$_id.category_code",
+                    "month": "$_id.month"
+                },
+                "total_errors": {"$sum": "$count"},
+                "top_violations": {
+                    "$push": {
+                        "violation_code": "$_id.violation_code",
+                        "count": "$count"
+                    }
+                }
+            }
+        },
+        {"$project": {
+            "category": "$_id.category_code",
+            "month": "$_id.month",
+            "total_errors": 1,
+            "top_violations": {"$slice": ["$top_violations", 2]}
+        }},
+        {"$sort": {"_id.month": 1}}
+    ]
+    # Print the results
+    results = AuditData.objects.aggregate(pipeline_last_7_months)
+
+    # Print the results
+    formatted_results = []
+    for result in results:
+        formatted_results.append({
+            "month": result["month"],
+            "category": result["category"],
+            "total_errors": result["total_errors"],
+            "top_violations": result["top_violations"]
+        })
+    return formatted_results
 
