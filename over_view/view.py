@@ -9,6 +9,8 @@ from bson import ObjectId
 import json
 from datetime import datetime, timedelta, time
 
+from over_view.query import get_audit_statistics
+
 
 class OverViewReport(Resource):
     @jwt_required()    
@@ -69,7 +71,7 @@ class OverViewReport(Resource):
             dict_data["revert_audits"] = dict_data["revert_audits"] + dict_data["rejected_audits"]
             del dict_data["submitted_audits"]
             del dict_data["rejected_audits"]
-        if module == "business":            
+        if module == "business":
             customer_name = data.get("customer_name")
             account_no = data.get("account_no")
             compliance = data.get("compliance")
@@ -90,7 +92,7 @@ class OverViewReport(Resource):
                 for status_type in ["pending", "approved", "revert","submitted","rejected"]:
                     dict_data[f"{status_type.lower()}_audits"] = sum(
                         1 for audit in audit_data
-                        if audit.status == status_type 
+                        if audit.status == status_type
                     )
             total_audits = dict_data["pending_audits"] + dict_data["submitted_audits"] + dict_data["revert_audits"] + dict_data["rejected_audits"] + dict_data["approved_audits"]
             dict_data["total_audits"] = total_audits
@@ -98,10 +100,7 @@ class OverViewReport(Resource):
             dict_data["revert_audits"] = dict_data["revert_audits"] + dict_data["rejected_audits"]
             del dict_data["submitted_audits"]
             del dict_data["rejected_audits"]
-        return jsonify(dict_data)          
-
-
-
+        return jsonify(dict_data)
 
 
 class AuditDashboardMonth(Resource):
@@ -116,7 +115,7 @@ class AuditDashboardMonth(Resource):
         module = request.json.get("module")
         region = request.json.get("region")
         status = request.json.get("status")
-        
+
         # Calculate the start date for six months ago
         month_ago = current_date - timedelta(days=30)
         start_date = datetime.combine(month_ago, time.min)
@@ -172,7 +171,7 @@ class AuditDashboardQuarter(Resource):
         year = request.json.get("year")
         status = request.json.get("status")
         years_data = {}
-        for Q in ["Q1","Q2","Q3","Q4"]:
+        for Q in ["Q1", "Q2", "Q3", "Q4"]:
             data = {}
             if Q == "Q1":
                 start_date = datetime(year, 1, 1)
@@ -226,7 +225,6 @@ class AuditDashboardQuarter(Resource):
                         data["approved_count"] = rec["count"]
                 years_data[Q] = data
         return jsonify(years_data)
-        
 
 
 def get_audit_statistics(match_condition):
@@ -267,7 +265,7 @@ def get_audit_statistics(match_condition):
     result = list(AuditData.objects.aggregate(pipeline))
     return result
 
-    
+
 def get_bussines_statistics(match_condition):
     pipeline = [
         {"$match":match_condition},

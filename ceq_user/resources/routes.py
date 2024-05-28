@@ -1,4 +1,8 @@
 from flask_restful import Api
+
+from business.report_view import RegionComplianceBusinessReport, CategoryBusinessReport, OverallBusinessReport, \
+    AccountCategory, RegionWisePastData, NonComplianceContributerSixMonths, NonComplianceContributerVistor, \
+    BusinessComplianceandNonComplianceImages
 from ceq_user.user.auth import CEQLoginApi
 from ceq_user.user.view import CEQAddUserAPI, CEQAddNewUserAPI, CEQUpdateUserAPI, \
     CEQViewAllUserAPI, CEQDeleteUserAPI, CEQUpdateUserStatusAPI, SearchUsers, TechnicianFileUpload
@@ -12,8 +16,8 @@ from business.view import CreateBusinessAudit, BusinessAuditDetails, GetBusiness
 from over_view.view import AuditDashboardQuarter, AuditDashboardMonth, OverViewReport
 from consumer.report_view import RegionComplianceReport, RegionComplianceReportGraph, RegionComplianceReportSharedZone, \
     RegionNonComplianceTopContributor, SharedzoneNonComplianceTopContributor, OtherNonComplianceTopContributor, \
-    CategoryNonComplianceContributor, AuditedTechnicians, ComplianceandNonComplianceImages
-
+    CategoryNonComplianceContributor, AuditedTechnicians, ComplianceandNonComplianceImages, \
+    NonComplianceCategoryLastSixMonths
 
 
 def initialize_routes(app):
@@ -69,7 +73,7 @@ def initialize_routes(app):
     api.add_resource(OverViewReport, '/ceq/over_view/report')
     api.add_resource(AuditDashboardQuarter, '/ceq/over_view/quarter_report')
 
-    #report compliance
+    #report consumer compliance and non compliance
     api.add_resource(RegionComplianceReport, '/ceq/report/region/complaince')
     api.add_resource(RegionComplianceReportGraph, '/ceq/report/region/complaince/graph')
     api.add_resource(RegionComplianceReportSharedZone, '/ceq/report/region/complaince/sharedzone')
@@ -79,5 +83,16 @@ def initialize_routes(app):
     api.add_resource(CategoryNonComplianceContributor, '/ceq/report/region/non-complaince/contributor')
     api.add_resource(AuditedTechnicians, '/ceq/report/region/technician/audits')
     api.add_resource(ComplianceandNonComplianceImages, '/ceq/report/region/images/audits')
+    api.add_resource(NonComplianceCategoryLastSixMonths, '/ceq/report/region/non-complaince/category')
 
-    
+
+    #report business compliance and non compliance
+    api.add_resource(RegionComplianceBusinessReport, '/ceq/business/report/region')
+    api.add_resource(CategoryBusinessReport, '/ceq/business/report/category')
+    api.add_resource(OverallBusinessReport, '/ceq/business/report/overall')
+    api.add_resource(AccountCategory, '/ceq/business/account/category')
+    api.add_resource(RegionWisePastData,'/ceq/business/account/region')
+    api.add_resource(NonComplianceContributerSixMonths, '/ceq/business/non-compliance/months')
+    api.add_resource(NonComplianceContributerVistor, '/ceq/business/non-compliance/companies')
+    api.add_resource(BusinessComplianceandNonComplianceImages, '/ceq/business/images')
+
