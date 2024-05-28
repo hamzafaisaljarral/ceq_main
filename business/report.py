@@ -189,33 +189,32 @@ def calculate_account_category_percentages(start_date, end_date):
             }
         },
         {
-            '$facet': {
-                'total_audits': [{'$count': 'total'}],
-                'category_counts': [
-                    {
-                        '$group': {
-                            '_id': '$account_category',
-                            'count': {'$sum': 1}
-                        }
-                    }
-                ]
+            '$group': {
+                '_id': None,
+                'total_audits': {'$sum': 1},
+                'categories': {
+                    '$push': '$account_category'
+                }
+            }
+        },
+        {
+            '$unwind': '$categories'
+        },
+        {
+            '$group': {
+                '_id': {'category': '$categories'},
+                'count': {'$sum': 1},
+                'totalAudits': {'$first': '$total_audits'}
             }
         },
         {
             '$project': {
-                'totalAudits': {'$arrayElemAt': ['$total_audits.total', 0]},
-                'categories': '$category_counts'
-            }
-        },
-        {'$unwind': '$categories'},
-        {
-            '$project': {
-                'account_category': '$categories._id',
-                'count': '$categories.count',
+                'account_category': '$_id.category',
+                'count': 1,
                 'percentage': {
                     '$floor': {
                         '$multiply': [
-                            {'$divide': ['$categories.count', '$totalAudits']},
+                            {'$divide': ['$count', '$totalAudits']},
                             100
                         ]
                     }
