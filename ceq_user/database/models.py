@@ -44,7 +44,6 @@ class User(Document):
             return False
 
 
-
 class Technicians(Document):
     emp_no = StringField(required=False)
     email_user_id = StringField(required=False)
@@ -57,21 +56,18 @@ class Technicians(Document):
     technician_name = StringField(required=False)
     field_supervisor_pt = StringField(required=False)
     field_supervisor = StringField(required=False)
-    
 
  
 class ErrorCode(EmbeddedDocument):
     code = StringField(required=True)
     description = StringField(required=True)
  
- 
- 
+
 class Category(Document):
     name = StringField(required=True, unique=True)
     error_codes = EmbeddedDocumentListField(ErrorCode)
    
-   
-   
+
 class Violations(EmbeddedDocument):  
     category_code = StringField()
     violation_code = StringField()
@@ -80,7 +76,6 @@ class Violations(EmbeddedDocument):
     remarks = StringField()
     image = StringField()
     severity = StringField()
-
 
 
 class AuditData(Document):
@@ -150,10 +145,10 @@ class BusinessAudit(Document):
     cbcm_close_date = DateTimeField(default=None)
     latitude = StringField(default="")
     longitude = StringField(default="")
-    wfm_emp_id = StringField(default="")
+    wfm_emp_id = StringField(default=0)
     tech_name = StringField(default="")
-    party_id = StringField(default="")
-    wfm_task_id = StringField(default="")
+    party_id = StringField(default=0)
+    wfm_task_id = StringField(default=0)
     wfm_wo_number = IntField(default=0)
     team_desc = StringField(default="")
     ceq_auditor_name = StringField(default="")
@@ -173,15 +168,11 @@ class BusinessAudit(Document):
     ceqv05_sub_inst_cpe = StringField(default="")
     ceqv06_sub_labelling = StringField(default="")
     sub_cable_inst = IntField(default=0)
-    sub_inst_ont = StringField(default="")
+    sub_inst_ont = StringField(default=0)
     sub_inst_wastes_left_uncleaned = IntField(default=0)
     existing_sub_inst_not_rectified = IntField(default=0)
-    sub_inst_cpe = StringField(default="")
-    sub_labelling = StringField(default="")
+    sub_inst_cpe = StringField(default=0)
+    sub_labelling = StringField(default=0)
     total = IntField(default=0)
-    compliance = StringField(default="")
+    compliance = StringField()
     status = StringField(default="Pending")
-    superviser_comment = StringField(default="")
-    signature = StringField(default="")
-    
-    
