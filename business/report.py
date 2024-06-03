@@ -1,5 +1,6 @@
 from ceq_user.database.models import BusinessAudit
 from datetime import datetime, timedelta
+from bson import ObjectId
 
 
 def compliance_business_check(start_date, end_date):
@@ -92,6 +93,11 @@ def count_error_codes(start_date, end_date):
         {
             '$group': {
                 '_id': None,  # We don't need to group by a specific field, we're counting each error independently
+                'ceqv01_sub_inst_ont_count': {
+                    '$sum': {
+                        '$cond': [{ '$eq': ['$ceqvo2_sub_inst_ont', 'YES'] }, 1, 0]
+                    }
+                },    
                 'ceqvo2_sub_inst_ont_count': {
                     '$sum': {
                         '$cond': [{ '$eq': ['$ceqvo2_sub_inst_ont', 'YES'] }, 1, 0]
@@ -123,7 +129,7 @@ def count_error_codes(start_date, end_date):
             '$project': {
                 '_id': 0,
                 'ceqv01_sub_cable_inst':1,
-                'ceqv02_sub_inst_ont_count': 1,
+                'ceqvo2_sub_inst_ont_count': 1,
                 'ceqv03_sub_inst_wastes_left_uncleaned_count': 1,
                 'ceqv04_existing_sub_inst_not_rectified_count': 1,
                 'ceqv05_sub_inst_cpe_count': 1,
@@ -367,7 +373,7 @@ def count_error_codes_monthwise(start_date, end_date):
                 '_id': 0,
                 'yearMonth': '$_id',
                 'ceqv01_sub_cable_inst': 1,
-                'ceqv02_sub_inst_ont_count': 1,
+                'ceqvo2_sub_inst_ont_count': 1,
                 'ceqv03_sub_inst_wastes_left_uncleaned_count': 1,
                 'ceqv04_existing_sub_inst_not_rectified_count': 1,
                 'ceqv05_sub_inst_cpe_count': 1,
@@ -408,8 +414,23 @@ def business_name_with_non_compliance(start_date, end_date):
     return [doc['customer_name'] for doc in result]
 
 
+def convert_objectid_to_str(doc):
+    """ Convert ObjectId to string for JSON serialization """
+    if isinstance(doc, dict):
+        for key, value in doc.items():
+            if isinstance(value, ObjectId):
+                doc[key] = str(value)
+            elif isinstance(value, list):
+                doc[key] = [convert_objectid_to_str(item) for item in value]
+            elif isinstance(value, dict):
+                doc[key] = convert_objectid_to_str(value)
+    elif isinstance(doc, list):
+        doc = [convert_objectid_to_str(item) for item in doc]
+    return doc
+
+
 def get_images_with_compliance(start_date, end_date):
-    pipeline = [
+    pipeline_compliance = [
         # Match documents within the specified date range and with 'Approved' status
         {
             '$match': {
@@ -422,13 +443,12 @@ def get_images_with_compliance(start_date, end_date):
             '$project': {
                 'product_type': 1,
                 'violation_remarks': 1,
-                'images': {
-                    '$filter': {
-                        'input': ['$photo1', '$photo2', '$photo3', '$photo4', '$photo5', '$photo6'],
-                        'as': 'photo',
-                        'cond': {'$ne': ['$$photo', '']}
-                    }
-                },
+                'photo1': 1,
+                'photo2': 1,
+                'photo3': 1,
+                'photo4': 1,
+                'photo5': 1,
+                'photo6': 1,
                 'compliance_status': {
                     '$cond': {
                         'if': {
@@ -447,56 +467,107 @@ def get_images_with_compliance(start_date, end_date):
                 }
             }
         },
-        # Filter documents based on image presence
+        # Add an array field 'images' containing non-empty photos
         {
-            '$match': {
-                'images': {'$ne': []}
-            }
-        },
-        # Split the documents into compliance and non-compliance facets and limit to 2 documents per facet
-        {
-            '$facet': {
-                'Compliance': [
-                    {'$match': {'compliance_status': 'Compliance'}},
-                    {'$limit': 2}
-                ],
-                'Non-Compliance': [
-                    {'$match': {'compliance_status': 'Non-Compliance'}},
-                    {'$limit': 2}
-                ]
-            }
-        },
-        # Unwind facets and project final output
-        {
-            '$project': {
-                'Compliance': {
-                    '$map': {
-                        'input': '$Compliance',
-                        'as': 'compliance_doc',
-                        'in': {
-                            'product_type': '$$compliance_doc.product_type',
-                            'violation_remarks': '$$compliance_doc.violation_remarks',
-                            'images': '$$compliance_doc.images'
-                        }
-                    }
-                },
-                'Non-Compliance': {
-                    '$map': {
-                        'input': '$Non-Compliance',
-                        'as': 'non_compliance_doc',
-                        'in': {
-                            'product_type': '$$non_compliance_doc.product_type',
-                            'violation_remarks': '$$non_compliance_doc.violation_remarks',
-                            'images': '$$non_compliance_doc.images'
-                        }
+            '$addFields': {
+                'images': {
+                    '$filter': {
+                        'input': ['$photo1', '$photo2', '$photo3', '$photo4', '$photo5', '$photo6'],
+                        'as': 'photo',
+                        'cond': {'$ne': ['$$photo', '']}
                     }
                 }
             }
+        },
+        # Filter documents based on image presence
+        {
+            '$match': {
+                'images': {'$ne': []},
+                'compliance_status': 'Compliance'
+            }
+        },
+        # Limit to 2 documents
+        {
+            '$limit': 2
         }
     ]
 
-    results = list(BusinessAudit.objects.aggregate(pipeline))
-    return results[0] if results else {}
+    pipeline_non_compliance = [
+        # Match documents within the specified date range and with 'Approved' status
+        {
+            '$match': {
+                'date_of_visit': {'$gte': start_date, '$lte': end_date},
+                'status': 'Approved'
+            }
+        },
+        # Project necessary fields and determine compliance status
+        {
+            '$project': {
+                'product_type': 1,
+                'violation_remarks': 1,
+                'photo1': 1,
+                'photo2': 1,
+                'photo3': 1,
+                'photo4': 1,
+                'photo5': 1,
+                'photo6': 1,
+                'compliance_status': {
+                    '$cond': {
+                        'if': {
+                            '$and': [
+                                {'$eq': ['$ceqv01_sub_cable_inst', 'NO']},
+                                {'$eq': ['$ceqvo2_sub_inst_ont', 'NO']},
+                                {'$eq': ['$ceqv03_sub_inst_wastes_left_uncleaned', 'NO']},
+                                {'$eq': ['$ceqv04_existing_sub_inst_not_rectified', 'NO']},
+                                {'$eq': ['$ceqv05_sub_inst_cpe', 'NO']},
+                                {'$eq': ['$ceqv06_sub_labelling', 'NO']}
+                            ]
+                        },
+                        'then': 'Compliance',
+                        'else': 'Non-Compliance'
+                    }
+                }
+            }
+        },
+        # Add an array field 'images' containing non-empty photos
+        {
+            '$addFields': {
+                'images': {
+                    '$filter': {
+                        'input': ['$photo1', '$photo2', '$photo3', '$photo4', '$photo5', '$photo6'],
+                        'as': 'photo',
+                        'cond': {'$ne': ['$$photo', '']}
+                    }
+                }
+            }
+        },
+        # Filter documents based on image presence
+        {
+            '$match': {
+                'images': {'$ne': []},
+                'compliance_status': 'Non-Compliance'
+            }
+        },
+        # Limit to 2 documents
+        {
+            '$limit': 2
+        }
+    ]
+
+    # Execute both pipelines
+    compliance_results = list(BusinessAudit.objects.aggregate(pipeline_compliance))
+    non_compliance_results = list(BusinessAudit.objects.aggregate(pipeline_non_compliance))
+    print(compliance_results,non_compliance_results)
+    # Combine results
+    compliance_results = [convert_objectid_to_str(doc) for doc in compliance_results]
+    non_compliance_results = [convert_objectid_to_str(doc) for doc in non_compliance_results]
+
+    results = {
+        'Compliance': compliance_results,
+        'Non-Compliance': non_compliance_results
+    }
+
+    return results
 
 
 
