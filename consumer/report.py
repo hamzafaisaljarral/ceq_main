@@ -102,7 +102,7 @@ def total_wr(start_date, end_date):
 
 def calculate_percentage_shared_zone(start_date, end_date):
     # Get the total errors for the "shared" region
-    error_results = errors_by_region(start_date, end_date)
+    error_results = errors_by_region_shared_zone(start_date, end_date)
     total_errors_by_region = sum(result['ErrorCount'] for result in error_results)
     print(error_results)
 
@@ -175,6 +175,49 @@ def total_audits_by_region(start_date, end_date, region):
     ]
     results = AuditData.objects.aggregate(*pipeline)
     return {result['_id']: result['TotalAudits'] for result in results}
+
+    
+def errors_by_region_shared_zone(start_date, end_date):
+    # Specify the regions to match against
+
+    pipeline = [
+        {
+            '$match': {
+                'createdDate': {'$gte': start_date, '$lte': end_date},
+                'sr_number': {'$regex': 'shared zone', '$options': 'i'},
+                'status': 'Approved'
+            }
+        },
+        {'$unwind': '$ceqvs'},  # Unwind the ceqvs first to facilitate easier processing
+        {
+            '$project': {
+                'errorPresent': '$ceqvs.violation_type'  # Directly use the boolean value of violation_type
+            }
+        },
+        {
+            '$group': {
+                '_id': '$region',
+                'ErrorCount': {'$sum': {'$cond': ['$errorPresent', 1, 0]}}  # Increment count if errorPresent is True
+            }
+        },
+        {
+            '$project': {
+                'region': '$_id',
+                'ErrorCount': 1,
+                '_id': 0
+            }
+        }
+    ]
+
+    results = list(AuditData.objects.aggregate(pipeline))
+    final_results = {}  # Initialize all regions with zero count
+
+    # Update counts based on aggregation results
+    for result in results:
+        final_results[result['region']] = result['ErrorCount']
+
+    # Convert the dictionary to a list of dictionaries for output
+    return [{'region': k, 'ErrorCount': v} for k, v in final_results.items()]
 
 
 def errors_by_region(start_date, end_date):
