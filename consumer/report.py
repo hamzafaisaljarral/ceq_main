@@ -75,13 +75,12 @@ def errors_by_region_wr(start_date, end_date):
 
 
 def total_wr(start_date, end_date):
-    filter_keyword = 'shared zone'
-
+    region = 'WR'
     pipeline = [
         {
             '$match': {
                 'createdDate': {'$gte': start_date, '$lte': end_date},
-                'name': {'$regex': filter_keyword, '$options': 'i'},  # Case insensitive search for "shared zone"
+                'region': region,
                 'status': 'Approved'
             }
         },
@@ -268,7 +267,7 @@ def calculate_percentage(start_date, end_date):
             percentage = (total_errors / (6 * total_audits)) * 100
         else:
             percentage = 0
-        formatted_region = region.replace(" ", "_")
+        formatted_region = region.replace(" ", "_")    
         percentage_results[formatted_region] = round(percentage, 2)
 
     return percentage_results
@@ -759,6 +758,7 @@ def audited_data_for_technicians_region_wise(start_date, end_date):
     return results
 
 
+
 def get_images_data(start_date, end_date, region):
     pipeline = [
         {"$match": {
@@ -770,19 +770,22 @@ def get_images_data(start_date, end_date, region):
         {"$match": {
             "ceqvs.violation_type": {"$exists": True},
             "ceqvs.image": {"$ne": ""},
-            "ceqvs.remarks":{"$ne" : ""}
+            "ceqvs.remarks": {"$ne" : ""}
         }},
         {
             "$group": {
                 "_id": "$ceqvs.violation_type",
-                "top_images": {"$push": "$ceqvs.image"},
-                "remarks":{"$push": "$ceqvs.remarks"}
+                "top_images": {
+                    "$push": {
+                        "image_url": "$ceqvs.image",
+                        "remark": "$ceqvs.remarks"
+                    }
+            }
             }
         },
         {
             "$project": {
-                "top_images": {"$slice": ["$top_images", 2]},  # MongoDB 3.4 supports $slice
-                "remarks" : {"$slice" : ["$remarks", 2]}
+                "top_images": {"$slice": ["$top_images", 2]}  # MongoDB 3.4 supports $slice
             }
         }
     ]
@@ -796,6 +799,7 @@ def get_images_data(start_date, end_date, region):
         formatted_results[key] = item['top_images']
 
     return formatted_results
+
 
 
 def last_six_month_category_non_compliance(start_date, end_date):

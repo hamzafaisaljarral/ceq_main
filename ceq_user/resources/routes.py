@@ -1,8 +1,4 @@
 from flask_restful import Api
-
-from business.report_view import RegionComplianceBusinessReport, CategoryBusinessReport, OverallBusinessReport, \
-    AccountCategory, RegionWisePastData, NonComplianceContributerSixMonths, NonComplianceContributerVistor, \
-    BusinessComplianceandNonComplianceImages
 from ceq_user.user.auth import CEQLoginApi
 from ceq_user.user.view import CEQAddUserAPI, CEQAddNewUserAPI, CEQUpdateUserAPI, \
     CEQViewAllUserAPI, CEQDeleteUserAPI, CEQUpdateUserStatusAPI, SearchUsers, TechnicianFileUpload
@@ -16,8 +12,12 @@ from business.view import CreateBusinessAudit, BusinessAuditDetails, GetBusiness
 from over_view.view import AuditDashboardQuarter, AuditDashboardMonth, OverViewReport
 from consumer.report_view import RegionComplianceReport, RegionComplianceReportGraph, RegionComplianceReportSharedZone, \
     RegionNonComplianceTopContributor, SharedzoneNonComplianceTopContributor, OtherNonComplianceTopContributor, \
-    CategoryNonComplianceContributor, AuditedTechnicians, ComplianceandNonComplianceImages, \
-    NonComplianceCategoryLastSixMonths
+    CategoryNonComplianceContributor, AuditedTechnicians, ComplianceandNonComplianceImages, NonComplianceCategoryLastSixMonths
+
+from business.report_view import RegionComplianceBusinessReport, CategoryBusinessReport, OverallBusinessReport, \
+    AccountCategory, RegionWisePastData, NonComplianceContributerSixMonths, NonComplianceContributerVistor, \
+    BusinessComplianceandNonComplianceImages
+
 
 
 def initialize_routes(app):
@@ -73,7 +73,7 @@ def initialize_routes(app):
     api.add_resource(OverViewReport, '/ceq/over_view/report')
     api.add_resource(AuditDashboardQuarter, '/ceq/over_view/quarter_report')
 
-    #report consumer compliance and non compliance
+    #report compliance
     api.add_resource(RegionComplianceReport, '/ceq/report/region/complaince')
     api.add_resource(RegionComplianceReportGraph, '/ceq/report/region/complaince/graph')
     api.add_resource(RegionComplianceReportSharedZone, '/ceq/report/region/complaince/sharedzone')
@@ -96,3 +96,4 @@ def initialize_routes(app):
     api.add_resource(NonComplianceContributerVistor, '/ceq/business/non-compliance/companies')
     api.add_resource(BusinessComplianceandNonComplianceImages, '/ceq/business/images')
 
+    

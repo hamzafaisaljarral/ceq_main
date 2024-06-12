@@ -12,8 +12,7 @@ from consumer.report import calculate_compliance, \
     calculate_compliance_graph, calculate_compliance_for_shared_zone, \
     get_top_error_codes_by_region, get_error_descriptions, get_top_error_codes_for_shared_zone, \
     total_audits_by_region, get_top_5_error_codes, \
-    calculate_category_error_stats, audited_data_for_technicians_region_wise, get_images_data, \
-    last_six_month_category_non_compliance
+    calculate_category_error_stats, audited_data_for_technicians_region_wise, get_images_data, last_six_month_category_non_compliance
 
 
 class RegionComplianceReport(Resource):
@@ -279,14 +278,14 @@ class AuditedTechnicians(Resource):
 
 
 class ComplianceandNonComplianceImages(Resource):
-    # @jwt_required()
+    @jwt_required()
     def get(self):
-        # try:
-        #    user = User.objects.get(id=get_jwt_identity()['id'])
-        # except DoesNotExist:
-        #    return unauthorized()
-        # if user.role not in ["supervisor", "admin"] and user.permission not in ["consumer", "all"]:
-        #    return {"message": "Unauthorized access"}, 401
+        try:
+           user = User.objects.get(id=get_jwt_identity()['id'])
+        except DoesNotExist:
+           return unauthorized()
+        if user.role not in ["supervisor", "admin"] and user.permission not in ["consumer", "all"]:
+           return {"message": "Unauthorized access"}, 401
         start_date_str = request.args.get('start_date')
         end_date_str = request.args.get('end_date')
         region = request.args.get('region')
@@ -297,20 +296,20 @@ class ComplianceandNonComplianceImages(Resource):
             end_date = parser.parse(end_date_str)
         except ValueError:
             return jsonify({'error': 'Invalid date format'}), 400
-        result = get_images_data(start_date, end_date, region)
+        result = get_images_data(start_date,end_date, region)
 
         return jsonify({'image_url': result})
 
 
 class NonComplianceCategoryLastSixMonths(Resource):
-    # @jwt_required()
+    @jwt_required()
     def get(self):
-        # try:
-        #    user = User.objects.get(id=get_jwt_identity()['id'])
-        # except DoesNotExist:
-        #    return unauthorized()
-        # if user.role not in ["supervisor", "admin"] and user.permission not in ["consumer", "all"]:
-        #    return {"message": "Unauthorized access"}, 401
+        try:
+            user = User.objects.get(id=get_jwt_identity()['id'])
+        except DoesNotExist:
+            return unauthorized()
+        if user.role not in ["supervisor", "admin"] and user.permission not in ["consumer", "all"]:
+            return {"message": "Unauthorized access"}, 401
         start_date_str = request.args.get('start_date')
         end_date_str = request.args.get('end_date')
         region = request.args.get('region')
@@ -324,4 +323,3 @@ class NonComplianceCategoryLastSixMonths(Resource):
         result = last_six_month_category_non_compliance(start_date, end_date)
 
         return jsonify({'total_category_error_count': result})
-

@@ -185,3 +185,8 @@ class BusinessAudit(Document):
     signature = StringField(default="")
     
     
+class Companies(Document):
+    company_name = StringField(default="")
+    image_url = StringField(default="")
+    
+    
