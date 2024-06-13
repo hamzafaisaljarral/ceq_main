@@ -766,26 +766,38 @@ class ExportCSV(Resource):
             end_date_str = request.args.get('end_date')
             region = request.args.get('region')
             status = request.args.get('status')
-            
+            sr_number = request.args.get('sr_number')
             # Calculate default start and end dates for the last 30 days
             now = datetime.now()
             default_start_date = now - timedelta(days=30)
             default_end_date = now
-            # Convert string dates to datetime objects if provided, otherwise use defaults
-            start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else default_start_date
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else default_end_date
             query = {}
-            query['createdDate'] = {'$gte': start_date, '$lte': end_date}
+            if start_date_str and end_date_str:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+                query = {
+                'createdDate': {'$gte': start_date, '$lte': end_date}
+                }
             if region:
                 query['region'] = region
             if status:
-                query['status'] = status  
+                query['status'] = status
+            if sr_number:
+                query['sr_number'] = sr_number
+            if not query:
+                query = {
+                'createdDate': {'$gte': default_start_date, '$lte': default_end_date}
+                }
+            # Retrieve and order the audit data
             audit_data = AuditData.objects(__raw__=query).order_by('-createdDate')
+            print("query: ",query)
+            print("DDDDD",list(audit_data))
             csv_data = []
             if audit_data:
                 for row in audit_data:
                     flattened_data = {}
                     data = json.loads(row.to_json())
+                    print("audit data",data)
                     # Define a function to handle missing fields
                     def get_field_value(key):
                         return data.get(key, "") if data else ""

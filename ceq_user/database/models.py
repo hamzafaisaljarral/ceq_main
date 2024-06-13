@@ -130,7 +130,7 @@ class AuditData(Document):
 class BusinessAudit(Document):
     sn = IntField(default=0)
     date_of_visit = DateTimeField(default=None)
-    sr_dkt_no = IntField(default=0)
+    sr_dkt_no = StringField(default="")
     region = StringField(default="")
     sub_region = StringField(default="")
     product_group = StringField(default="")
