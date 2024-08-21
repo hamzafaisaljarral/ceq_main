@@ -8,10 +8,11 @@ from mongoengine import DoesNotExist
 from bson import ObjectId
 import json
 from datetime import datetime, timedelta, time
+import calendar
 
 
 class OverViewReport(Resource):
-    @jwt_required()    
+    @jwt_required()
     def post(self):
         try:
             user = User.objects.get(id=get_jwt_identity()['id'])
@@ -27,137 +28,194 @@ class OverViewReport(Resource):
  
         start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
         end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
- 
-        # Compose a readable date range string for output
         date_range = f"{start_date_str} to {end_date_str}" if start_date_str and end_date_str else "Not specified"
-        total_audits = 0
-        dict_data = {
-            "pending_audits" : 0,
-            "submitted_audits" : 0,
-            "revert_audits":0,
-            "rejected_audits":0,
-            "approved_audits":0,
-            "total_audits" : 0
-        }
+        if end_date:             
+            end_date = end_date.replace(hour=23, minute=59, second=59)
+        dict_data = {}
         dict_data["date_range"] = date_range
-        query = {} 
+        query = {}
+ 
         if module == "consumer":
-            if start_date and end_date:
-                query['createdDate'] = {'$gte': start_date, '$lte': end_date}
-            elif start_date:
-                query['createdDate'] = {'$gte': start_date}
-            elif end_date:
-                query['createdDate'] = {'$lte': end_date}
             if region:
                 query['region'] = region
             if status:
                 query['status'] = status
             if user.role not in ["audit", "supervisor", "admin"] and user.permission not in ["consumer", "all"]:
-                return {"message": "Unauthorized access"}, 401 
+                return {"message": "Unauthorized access"}, 401
             if user.role == "auditor":
                 query["auditor_name"] = user.name
-            audit_data = AuditData.objects(__raw__=query).order_by('-createdDate')
-            if audit_data:
-                for status_type in ["Pending", "Approved", "Revert","Submitted","Rejected"]:
-                    dict_data[f"{status_type.lower()}_audits"] = sum(
-                        1 for audit in audit_data
-                        if audit.status == status_type
-                    )
-            total_audits = dict_data["pending_audits"] + dict_data["submitted_audits"] + dict_data["revert_audits"] + dict_data["rejected_audits"] + dict_data["approved_audits"]
-            dict_data["total_audits"] = total_audits
-            dict_data["pending_audits"] = dict_data["pending_audits"] + dict_data["submitted_audits"]
-            dict_data["revert_audits"] = dict_data["revert_audits"] + dict_data["rejected_audits"]
-            del dict_data["submitted_audits"]
-            del dict_data["rejected_audits"]
-        if module == "business":            
+            for date_type in ["current_date", "previous_date"]:
+                if start_date and end_date:
+                    if date_type == "current_date":
+                        query['createdDate'] = {'$gte': start_date, '$lte': end_date}
+                    elif date_type == "previous_date":
+                        days_difference = (end_date - start_date).days
+                        previous_start_date = start_date - timedelta(days=days_difference)
+                        previous_end_date = end_date - timedelta(days=days_difference)
+                        print("previous_start_date; ", previous_start_date)
+                        print("previous_end_date: ", previous_end_date)
+                        query['createdDate'] = {'$gte': previous_start_date, '$lte': previous_end_date}
+                else:
+                    # If no date filters are provided, get all records
+                    query.pop('createdDate', None)
+                audit_data = AuditData.objects(__raw__=query).order_by('-createdDate')
+                dict_temp = {}
+                print("query for over_view consumer", query)
+                if audit_data:
+                    for status_type in ["Pending", "Approved", "Revert", "Submitted", "Rejected"]:
+                        dict_temp[f"{status_type.lower()}_audits"] = sum(
+                            1 for audit in audit_data
+                            if audit.status == status_type
+                        )
+                    total_audits = dict_temp.get("approved_audits", 0) + dict_temp.get("pending_audits", 0) + dict_temp.get("revert_audits", 0) + dict_temp.get("rejected_audits", 0) + dict_temp.get("submitted_audits", 0) 
+                    if date_type == "current_date":
+                        dict_data["total_audits"] = total_audits
+                        dict_data["approved_audits"] = dict_temp.get("approved_audits", 0)
+                        dict_data["pending_audits"] = dict_temp.get("pending_audits", 0) + dict_temp.get("submitted_audits", 0)
+                        dict_data["revert_audits"] = dict_temp.get("revert_audits", 0) + dict_temp.get("rejected_audits", 0)
+                        
+                    elif date_type == "previous_date":
+                        dict_data["previous_total_audits"] = total_audits
+                        dict_data["previous_approved_audits"] = dict_temp.get("approved_audits", 0)
+                        dict_data["previous_pending_audits"] = dict_temp.get("pending_audits", 0) + dict_temp.get("submitted_audits", 0)
+                        dict_data["previous_revert_audits"] = dict_temp.get("revert_audits", 0) + dict_temp.get("rejected_audits", 0)
+                        
+                    else:
+                        dict_data["total_audits"] = total_audits
+                        dict_data["approved_audits"] = dict_temp.get("approved_audits", 0)
+                        dict_data["pending_audits"] = dict_temp.get("pending_audits", 0) + dict_temp.get("submitted_audits", 0)
+                        dict_data["revert_audits"] = dict_temp.get("revert_audits", 0) + dict_temp.get("rejected_audits", 0)
+                        
+        if module == "business":
             customer_name = data.get("customer_name")
             account_no = data.get("account_no")
             compliance = data.get("compliance")
-            if start_date and end_date:
-                query['date_of_visit'] = {'$gte': start_date, '$lte': end_date}
-            elif start_date:
-                query['date_of_visit'] = {'$gte': start_date}
-            elif end_date:
-                query['date_of_visit'] = {'$lte': end_date}
             if region:
                 query['region'] = region
             if user.role not in ["audit", "supervisor", "admin"] and user.permission not in ["business", "all"]:
-                return {"message": "Unauthorized access"}, 401 
+                return {"message": "Unauthorized access"}, 401
             if user.role == "auditor":
-                query["ceq_auditor_name"] = user.name
-            audit_data = BusinessAudit.objects(__raw__=query).order_by('-date_of_visit')
-            if audit_data:
-                for status_type in ["pending", "approved", "revert","submitted","rejected"]:
-                    dict_data[f"{status_type.lower()}_audits"] = sum(
-                        1 for audit in audit_data
-                        if audit.status == status_type 
-                    )
-            total_audits = dict_data["pending_audits"] + dict_data["submitted_audits"] + dict_data["revert_audits"] + dict_data["rejected_audits"] + dict_data["approved_audits"]
-            dict_data["total_audits"] = total_audits
-            dict_data["pending_audits"] = dict_data["pending_audits"] + dict_data["submitted_audits"]
-            dict_data["revert_audits"] = dict_data["revert_audits"] + dict_data["rejected_audits"]
-            del dict_data["submitted_audits"]
-            del dict_data["rejected_audits"]
-        return jsonify(dict_data)          
+                query["ceq_auditor_name"] = user.name   
+            for date_type in ["current_date", "previous_date"]:
+                if start_date and end_date:
+                    if date_type == "current_date":
+                        query['date_and_time'] = {'$gte': start_date, '$lte': end_date}
+                        print("current date: ",query)
+                    elif date_type == "previous_date":
+                        days_difference = (end_date - start_date).days
+                        previous_start_date = start_date - timedelta(days=days_difference)
+                        previous_end_date = end_date - timedelta(days=days_difference)
+                        query['date_and_time'] = {'$gte': previous_start_date, '$lte': previous_end_date}
+                print("query for over_view business", query)
+                audit_data = BusinessAudit.objects(__raw__=query).order_by('-date_and_time')
+                print(audit_data)
+                dict_temp = {}
+                if audit_data:
+                    status_types = ["pending", "approved", "revert", "submitted", "rejected"]
+                    for status_type in status_types:
+                        dict_temp[f"{status_type}_audits"] = sum(
+                            1 for audit in audit_data
+                            if audit.status.lower() == status_type
+                        )
+                
+                    total_audits = dict_temp.get("approved_audits", 0) + dict_temp.get("pending_audits", 0) + dict_temp.get("revert_audits", 0) + dict_temp.get("rejected_audits", 0) + dict_temp.get("submitted_audits", 0) 
+                    
+                    if date_type == "current_date":
+                        dict_data["total_audits"] = total_audits
+                        dict_data["approved_audits"] = dict_temp.get("approved_audits", 0)
+                        dict_data["pending_audits"] = dict_temp.get("pending_audits", 0) + dict_temp.get("submitted_audits", 0)
+                        dict_data["revert_audits"] = dict_temp.get("revert_audits", 0) + dict_temp.get("rejected_audits", 0)
+                        dict_data["submitted_audits"] = dict_temp.get("submitted_audits", 0)
+                    elif date_type == "previous_date":
+                        dict_data["previous_total_audits"] = total_audits
+                        dict_data["previous_approved_audits"] = dict_temp.get("approved_audits", 0)
+                        dict_data["previous_pending_audits"] = dict_temp.get("pending_audits", 0) + dict_temp.get("submitted_audits", 0)
+                        dict_data["previous_revert_audits"] = dict_temp.get("revert_audits", 0) + dict_temp.get("rejected_audits", 0)
+                        dict_data["previous_submitted_audits"] = dict_temp.get("submitted_audits", 0)
+                    else:
+                        dict_data["total_audits"] = total_audits
+                        dict_data["approved_audits"] = dict_temp.get("approved_audits", 0)
+                        dict_data["pending_audits"] = dict_temp.get("pending_audits", 0)
+                        dict_data["revert_audits"] = dict_temp.get("revert_audits", 0) + dict_temp.get("rejected_audits", 0)
+                        dict_data["submitted_audits"] = dict_temp.get("submitted_audits", 0)
+ 
+        return jsonify(dict_data)
 
-
-
-
-
-class AuditDashboardMonth(Resource):
+class AuditDashboardYear(Resource):
     @jwt_required()
     def post(self):
         try:
             user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
             return unauthorized() 
-        current_date = datetime.now().date()
-        end_date = datetime.combine(current_date, time.min)
         module = request.json.get("module")
         region = request.json.get("region")
+        year = request.json.get("year")
         status = request.json.get("status")
-        
-        # Calculate the start date for six months ago
-        month_ago = current_date - timedelta(days=30)
-        start_date = datetime.combine(month_ago, time.min)
-        month_data = {}
-        match_condition = {"createdDate": {"$gte": start_date, "$lte": end_date},"status": {"$in": ["Approved", "Submitted", "Pending", "Rejected", "Revert"]}}
-        if region != "":
-            match_condition["region"] = region
-        if user.role == "auditor":
-            match_condition["auditor_name"] = user.name
-        if module == "consumer":
-            records = get_audit_statistics(match_condition)
-            for rec in records:
-                print(rec["status"])
-                if rec["status"] == "Revert/Rejected":
-                    month_data["revert_percentage"] = round(rec["percentage"], 2)
-                    month_data["revert_count"] = rec["count"]
-                if rec["status"] == "Submitted/Pending":
-                    month_data["pending_percentage"] = round(rec["percentage"], 2)
-                    month_data["pending_count"] = rec["count"]
-                if rec["status"] == "Approved":
-                    month_data["approved_percentage"] = round(rec["percentage"], 2)
-                    month_data["approved_count"] = rec["count"]
-        match_condition = {"date_of_visit": {"$gte": start_date, "$lte": end_date},"status": {"$in": ["Approved", "Submitted", "Pending", "Rejected", "Revert"]}}
-        if region != "":
-            match_condition["region"] = region
-        if user.role == "auditor":
-            match_condition["ceq_auditor_name"] = user.name
-        if module == "business":
-            records = get_bussines_statistics(match_condition)
-            for rec in records:
-                if rec["status"] == "revert/rejected":
-                    month_data["revert_percentage"] = round(rec["percentage"], 2)
-                    month_data["revert_count"] = rec["count"]
-                if rec["status"] == "submitted/pending":
-                    month_data["pending_percentage"] = round(rec["percentage"], 2)
-                    month_data["pending_count"] = rec["count"]
-                if rec["status"] == "approved":
-                    month_data["approved_percentage"] = round(rec["percentage"], 2)
-                    month_data["approved_count"] = rec["count"]
-
-        return jsonify(month_data)
+        current_year = datetime.now().year
+        years = list(range(2023, current_year+1))
+        years_data = {}
+        for year in years:
+            start_date = datetime(year, 1, 1)
+            end_date = datetime(year, 12,31)
+            if module == "consumer":
+                match_condition = {"createdDate": {"$gte": start_date, "$lte": end_date},"status": {"$in": ["Approved", "Submitted", "Pending", "Rejected", "Revert"]}}
+                if region != "":
+                    match_condition["region"] = region
+                if user.role == "auditor":
+                    match_condition["auditor_name"] = user.name
+                records = get_audit_statistics(match_condition)
+                data = {
+                    "revert_percentage":0,
+                    "revert_count" :0,
+                    "pending_percentage" :0,
+                    "pending_count":0,
+                    "approved_percentage":0,
+                    "approved_count" :0
+                }
+                for rec in records:
+                    if rec["status"] == "Revert/Rejected":
+                        data["revert_percentage"] = round(rec["percentage"], 2)
+                        data["revert_count"] = rec["count"]
+                    if rec["status"] == "Submitted/Pending":
+                        data["pending_percentage"] = round(rec["percentage"], 2)
+                        data["pending_count"] = rec["count"]
+                    if rec["status"] == "Approved":
+                        data["approved_percentage"] = round(rec["percentage"], 2)
+                        data["approved_count"] = rec["count"]
+                years_data[year] = data
+            if module == "business":
+                match_condition = {"date_and_time": {"$gte": start_date, "$lte": end_date},"status": {"$in": ["Approved", "Submitted", "Pending", "Rejected", "Revert"]}}
+                if region != "":
+                    match_condition["region"] = region
+                if user.role == "auditor":
+                    match_condition["ceq_auditor_name"] = user.name
+                records = get_bussines_statistics(match_condition)
+                data = {
+                    "revert_percentage":0,
+                    "revert_count" :0,
+                    "pending_percentage" :0,
+                    "pending_count":0,
+                    "approved_percentage":0,
+                    "approved_count" :0,
+                    "submitted_count":0,
+                    "submitted_percentage":0
+                    }
+                for rec in records:
+                    if rec["status"] == "revert/rejected":
+                        data["revert_percentage"] = round(rec["percentage"], 2)
+                        data["revert_count"] = rec["count"]
+                    if rec["status"] == "pending":
+                        data["pending_percentage"] = round(rec["percentage"], 2)
+                        data["pending_count"] = rec["count"]
+                    if rec["status"] == "submitted":
+                        data["submitted_percentage"] = round(rec["percentage"], 2)
+                        data["submitted_count"] = rec["count"]
+                    if rec["status"] == "approved":
+                        data["approved_percentage"] = round(rec["percentage"], 2)
+                        data["approved_count"] = rec["count"]
+                years_data[year] = data
+        return jsonify(years_data)
 
 
 class AuditDashboardQuarter(Resource):
@@ -206,7 +264,7 @@ class AuditDashboardQuarter(Resource):
                         data["approved_percentage"] = round(rec["percentage"], 2)
                         data["approved_count"] = rec["count"]
                 years_data[Q] = data
-            match_condition = {"date_of_visit": {"$gte": start_date, "$lte": end_date},"status": {"$in": ["Approved", "Submitted", "Pending", "Rejected", "Revert"]}}
+            match_condition = {"date_and_time": {"$gte": start_date, "$lte": end_date},"status": {"$in": ["Approved", "Submitted", "Pending", "Rejected", "Revert"]}}
             if region != "":
                 match_condition["region"] = region
             if user.role == "auditor":
@@ -218,15 +276,85 @@ class AuditDashboardQuarter(Resource):
                     if rec["status"] == "revert/rejected":
                         data["revert_percentage"] = round(rec["percentage"], 2)
                         data["revert_count"] = rec["count"]
-                    if rec["status"] == "submitted/pending":
+                    if rec["status"] == "pending":
                         data["pending_percentage"] = round(rec["percentage"], 2)
                         data["pending_count"] = rec["count"]
+                    if rec["status"] == "submitted":
+                        data["submitted_percentage"] = round(rec["percentage"], 2)
+                        data["submitted_count"] = rec["count"]
                     if rec["status"] == "approved":
                         data["approved_percentage"] = round(rec["percentage"], 2)
                         data["approved_count"] = rec["count"]
                 years_data[Q] = data
         return jsonify(years_data)
         
+
+
+class AuditDashboard4Months(Resource):
+    @jwt_required()
+    def post(self):
+        try:
+            user = User.objects.get(id=get_jwt_identity()['id'])
+        except DoesNotExist:
+            return unauthorized()
+        module = request.json.get("module")
+        region = request.json.get("region")
+        months_data = {}
+        for i in range(4): 
+            rdate=datetime.now()
+            month = rdate.month-i
+            year = rdate.year
+            month_name = calendar.month_name[month]
+            start_date=datetime(year,month,1)
+            days_in_month = calendar.monthrange(year, month)[1]
+            end_date = start_date + timedelta(days=days_in_month - 1)
+            if end_date:             
+                end_date = end_date.replace(hour=23, minute=59, second=59)
+            print("AuditDashboard4Months ", start_date)
+            print("AuditDashboard4Months ",end_date)
+            match_condition = {"createdDate": {"$gte": start_date, "$lte": end_date},"status": {"$in": ["Approved", "Submitted", "Pending", "Rejected", "Revert"]}}
+            if region != "":
+                match_condition["region"] = region
+            if module == "consumer":
+                records = get_audit_statistics(match_condition)
+                data = {
+                    "revert_count" :0,
+                    "pending_count":0,
+                    "approved_count" :0
+                    }
+                for rec in records:
+                    if rec["status"] == "Revert/Rejected":
+                        data["revert_count"] = rec["count"]
+                    if rec["status"] == "Submitted/Pending":
+                        data["pending_count"] = rec["count"]
+                    if rec["status"] == "Approved":
+                        data["approved_count"] = rec["count"]
+                months_data[month_name] = data
+            match_condition = {"date_and_time": {"$gte": start_date, "$lte": end_date},"status": {"$in": ["Approved", "Submitted", "Pending", "Rejected", "Revert"]}}
+            if region != "":
+                match_condition["region"] = region
+            if module == "business":
+                print("inside business")
+                records = get_bussines_statistics(match_condition)
+                data = {
+                    "revert_count" :0,
+                    "pending_count":0,
+                    "approved_count" :0,
+                    "submitted_count":0
+                    }
+                for rec in records:
+                    if rec["status"] == "revert/rejected":
+                        data["revert_count"] = rec["count"]
+                    if rec["status"] == "pending":
+                        data["pending_count"] = rec["count"]
+                    if rec["status"] == "submitted":
+                        data["submitted_count"] = rec["count"]
+                    if rec["status"] == "approved":
+                        data["approved_count"] = rec["count"]
+                months_data[month_name] = data
+        return jsonify(months_data)
+
+
 
 
 def get_audit_statistics(match_condition):
@@ -270,21 +398,27 @@ def get_audit_statistics(match_condition):
     
 def get_bussines_statistics(match_condition):
     pipeline = [
-        {"$match":match_condition},
+        {"$match": match_condition},
         {"$group": {
             "_id": {
                 "$cond": [
-                    {"$or": [
-                        {"$eq": ["$status", "approved"]}
-                    ]},
+                    {"$eq": ["$status", "Approved"]},
                     "approved",
                     {"$cond": [
-                        {"$or": [
-                            {"$eq": ["$status", "rejected"]},
-                            {"$eq": ["$status", "revert"]}
-                        ]},
-                        "revert/rejected",
-                        "submitted/pending"
+                        {"$eq": ["$status", "Pending"]},
+                        "pending",
+                        {"$cond": [
+                            {"$eq": ["$status", "Submitted"]},
+                            "submitted",
+                            {"$cond": [
+                                {"$or": [
+                                    {"$eq": ["$status", "Rejected"]},
+                                    {"$eq": ["$status", "Revert"]}
+                                ]},
+                                "revert/rejected",
+                                "other"
+                            ]}
+                        ]}
                     ]}
                 ]
             },

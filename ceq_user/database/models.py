@@ -1,8 +1,8 @@
 from datetime import datetime
- 
+import uuid
 from mongoengine import Document, EmailField, StringField, IntField, \
     DateTimeField, ReferenceField, EmbeddedDocument, \
-    EmbeddedDocumentField, EmbeddedDocumentListField, ListField, BooleanField
+    EmbeddedDocumentField, EmbeddedDocumentListField, ListField, BooleanField, fields 
  
 """
 ALL our models are declared here
@@ -35,7 +35,10 @@ class User(Document):
     supervisor = ReferenceField('User')
     login_count = IntField(default=0)
     last_login = DateTimeField()
- 
+    otp_code = StringField()
+    otp_expiry = DateTimeField()
+
+
     def check_user_status(username):
         user = User.objects(username=username, status='active').first()
         if user is not None:
@@ -122,7 +125,7 @@ class AuditData(Document):
     # Define the index for the createdDate field
     meta = {
         'indexes': [
-            {'fields': ['-createdDate']}
+            {'fields': ['auditDate']}
         ]
     }
 
@@ -130,7 +133,8 @@ class AuditData(Document):
 class BusinessAudit(Document):
     sn = IntField(default=0)
     date_of_visit = DateTimeField(default=None)
-    sr_dkt_no = IntField(default=0)
+    date_and_time = DateTimeField(default=None)
+    sr_dkt_no = StringField(default="")
     region = StringField(default="")
     sub_region = StringField(default="")
     product_group = StringField(default="")
@@ -180,8 +184,90 @@ class BusinessAudit(Document):
     sub_labelling = StringField(default="")
     total = IntField(default=0)
     compliance = StringField(default="")
-    status = StringField(default="Pending")
+    status = StringField(default="pending")
     superviser_comment = StringField(default="")
     signature = StringField(default="")
     
+    def saves(self, *args, **kwargs):
+        # Ensure default values are assigned if there's a ValueError
+        for field_name, field in self._fields.items():
+            try:
+                value = getattr(self, field_name)
+                # You might have an expected type for each field
+                expected_type = field.expected_type  # Assume this attribute exists
+                if not isinstance(value, expected_type):
+                    value = expected_type(value)
+                setattr(self, field_name, value)
+            except ValueError:
+                default = field.default
+                if callable(default):
+                    default = default()
+                setattr(self, field_name, default)
+        super(BusinessAudit, self).saves(*args, **kwargs)
     
+    
+class Companies(Document):
+    company_name = StringField(default="")
+    image_url = StringField(default="")
+    
+
+class FdhViolations(EmbeddedDocument):
+    category_code = fields.StringField(default='')
+    violation_code = fields.StringField(default='')
+    violation_type = fields.BooleanField(default=False)
+    severity = fields.StringField(default='')
+    description = StringField(default='')
+    remarks = fields.StringField(default='')
+ 
+class Visit(EmbeddedDocument):
+    visited_id = StringField(default='')
+    visiter_name = fields.StringField(default='')
+    visit_time = fields.DateTimeField(default=datetime.utcnow)
+    violations = fields.ListField(fields.EmbeddedDocumentField(FdhViolations), default=[])
+    images = fields.ListField(fields.StringField(), default=[])
+ 
+class NewFdh(Document):
+    fdh_health = fields.StringField(default='')
+    fdh_number = fields.IntField(default=0)
+    eid = fields.StringField(default='')
+    olt = fields.StringField(default='')
+    last_uplifted_date = fields.StringField(default='')
+    uplifting_frequency = fields.IntField(default=0)
+    region = fields.StringField(default='')
+    latitude = fields.StringField(default='')
+    longitude = fields.StringField(default='')
+    sub_type = fields.StringField(default='')
+    severity = fields.StringField(default='')
+    action_proposed = fields.StringField(default='')
+    expansion_required = fields.StringField(default='')
+    datetime = fields.DateTimeField(default="")
+    network_details = fields.StringField(default='')    
+    size_score = fields.IntField(default=0)
+    inspection_date = fields.StringField(default='')
+    visit_required = fields.StringField(default='')
+    size = fields.IntField(default=0)
+    utilization = fields.StringField(default='')
+    network_health_index = fields.IntField(default=0)
+    health_index_slab = fields.StringField(default='')
+    faults = fields.StringField(default='')
+    health_index = fields.IntField(default=0)
+    main_type = fields.StringField(default='')
+    physical_health_index = fields.StringField(default='')
+    utilization_score = fields.IntField(default=0)
+    utilization_slab = fields.StringField(default='')
+    faults_slab = fields.StringField(default='')
+    name = fields.StringField(default='')
+    uplift_required = fields.StringField(default='')
+    fdh_id = fields.StringField(default='')
+    comment = fields.StringField(default='')
+    violations = fields.ListField(fields.EmbeddedDocumentField(FdhViolations), default=[])
+    visits = fields.ListField(fields.EmbeddedDocumentField(Visit), default=[])
+ 
+    def save(self, *args, **kwargs):
+        for field_name, field in self._fields.items():
+            if getattr(self, field_name) is None:
+                default = field.default
+                if callable(default):
+                    default = default()
+                setattr(self, field_name, default)
+        super(NewFdh, self).save(*args, **kwargs)

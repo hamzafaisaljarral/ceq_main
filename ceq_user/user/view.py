@@ -2,7 +2,7 @@ import json
 
 from flask import request, jsonify
 from flask_restful import Resource
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt 
 from mongoengine.errors import DoesNotExist
 from mongoengine import Q
 from ceq_user.database.models import User, Technicians
@@ -12,34 +12,37 @@ import pandas as pd
 
 
 class CEQAddUserAPI(Resource):
+    @jwt_required()
     def post(self):
         try:
-            data = request.get_json()
-            role = data.get('role')
-            # user_obj = ""
-            # if role != 'supervisor':
-            #     # Assuming Supervisor model is defined elsewhere
-            #     supervisor_id = data.get('supervisor')
-            #     user_obj = User.objects.get(username=supervisor_id)
-            #     if user_obj.role != 'supervisor':
-            #         return {'message': 'Supervisor not found'}, 404
-            new_user = User(
-                status=data.get('status'),
-                username=data.get('username'),
-                email=data.get('email'),
-                role=role,
-                permission=data.get('permission'),
-                # supervisor=user_obj,
-                name=data.get('name')
-            )
-            new_user.save()
-            return 'User added successfully', 201
+            user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
-            return {'message': 'Supervisor not found'}, 404
-        except Exception as e:
-            print(e)  # Log the error for debugging purposes
-            return {'message': 'An error occurred while adding the user', 'error': str(e)}, 500
-
+            return not_found()
+        if user.role == "admin":
+            try:
+                
+                data = request.get_json()
+                user_obj = User.objects.get(username=data.get('supervisor'))
+                if user_obj.role != 'supervisor':
+                    return {'message': 'Supervisor not found'}, 404
+                new_user = User(
+                    status=data.get('status'),
+                    username=data.get('username'),
+                    email=data.get('email'),
+                    role=data.get('role'),
+                    permission=data.get('permission'),
+                    supervisor=user_obj,
+                    name=data.get('name')
+                )
+                new_user.save()
+                return 'User added successfully', 201
+            except DoesNotExist:
+                return {'message': 'Supervisor not found'}, 404
+            except Exception as e:
+                print(e)  # Log the error for debugging purposes
+                return {'message': 'An error occurred while adding the user', 'error': str(e)}, 500
+        else:
+            return {"message": "Unauthorized access"}, 401            
 
 class CEQAddNewUserAPI(Resource):
     @jwt_required()
@@ -48,7 +51,6 @@ class CEQAddNewUserAPI(Resource):
             user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
             return not_found()
-
         if user.role == "admin":
             data = request.get_json()
             new_user = User(status=data['status'], username=data['username'], email=data['email'], role=data['role'],  
@@ -62,10 +64,8 @@ class CEQAddNewUserAPI(Resource):
 
 
 class CEQUpdateUserAPI(Resource):
-   
     @jwt_required()
     def post(self):
-        
         try:
             user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
@@ -113,14 +113,39 @@ class CEQViewAllUserAPI(Resource):
         try:
             user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
-            return not_found()
-
-        # if user.role == "superadmin":
+            return {'message': 'User not found'}, 404
         users = User.objects().order_by("-id")
         users_json = json.loads(users.to_json())
+        # Fetch supervisor usernames
+        supervisor_ids = [user['supervisor']['$oid'] for user in users_json if 'supervisor' in user]
+        supervisors = User.objects(id__in=supervisor_ids)
+        supervisor_dict = {str(supervisor.id): supervisor.username for supervisor in supervisors}
+        for user in users_json:
+            if 'supervisor' in user:
+                supervisor_id = user['supervisor']['$oid']
+                user['supervisor_username'] = supervisor_dict.get(supervisor_id, None)
         return jsonify(users_json)
-        # else:
-        # return unauthorized()
+
+
+# class CEQDeleteUserAPI(Resource):
+#     @jwt_required()
+#     def post(self):
+#         data = request.get_json()
+#         try:
+#             user = User.objects.get(id=get_jwt_identity()['id'])
+#         except DoesNotExist:
+#             return not_found()
+#         if user.role == "admin":
+#             try:
+#                 User.objects(username=data['username']).delete()
+#             except DoesNotExist:
+#                 return not_found()
+#             return 'User deleted successfully', 201
+#         else:
+#             return unauthorized()
+
+
+
 
 
 class CEQDeleteUserAPI(Resource):
@@ -128,18 +153,21 @@ class CEQDeleteUserAPI(Resource):
     def post(self):
         data = request.get_json()
         try:
-            user = User.objects.get(id=get_jwt_identity()['id'])
+            requesting_user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
             return not_found()
-
-        if user.role == "admin":
+ 
+        if requesting_user.role == "admin":
             try:
-                User.objects(username=data['username']).delete()
+                user_to_delete = User.objects.get(username=data['username'])
+                user_to_delete.delete()
+                return 'User deleted successfully. The token remains valid until it expires.', 201
             except DoesNotExist:
                 return not_found()
-            return 'User deleted successfully', 201
         else:
             return unauthorized()
+
+
 
 
 class CEQUpdateUserStatusAPI(Resource):

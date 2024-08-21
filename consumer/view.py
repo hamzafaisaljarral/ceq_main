@@ -17,6 +17,8 @@ import os
 import io
 import uuid
 import paramiko
+import time
+from dateutil import parser
 
 
 # This api is used to return hello world
@@ -38,16 +40,16 @@ class DeleteConsumerAudit(Resource):
             # Retrieve audit data by audit_id
             audit_document = AuditData.objects(id=id_audit).first()
             if audit_document is None:
-                return {'message': 'Audit ID Not Found'}, 404
+                return {'message': 'Audit ID Not Found'}
             if audit_document:
                 audit_data = json.loads(audit_document.to_json())
                 for key in ['audit_signature', 'audited_staff_signature']:
                     if key in audit_data:
                         image_file=None
                         path = audit_data[key]
-                        split_path = path.split('ceq/')
+                        split_path = path.split('consumer/')
                         file_name = split_path[-1]
-                        exact_path= "/app1/DSCE/PortalGateway/estore_backend/public/uploads/ceq/" + file_name
+                        exact_path= "/app/static/consumer/" + file_name
                         send_image_to_server(image_file,file_path= exact_path)      
                 if "ceqvs" in audit_data:
                     for obj in audit_data["ceqvs"]:
@@ -56,14 +58,14 @@ class DeleteConsumerAudit(Resource):
                                 if "image" in violation:
                                     image_file=None
                                     path = violation["image"]
-                                    split_path = path.split('ceq/')
+                                    split_path = path.split('consumer/')
                                     file_name = split_path[-1]
-                                    exact_path= "/app1/DSCE/PortalGateway/estore_backend/public/uploads/ceq/" + file_name
+                                    exact_path= "/app/static/consumer/" + file_name
                                     send_image_to_server(image_file,file_path= exact_path)             
                 audit_document.delete()
                 return {"message": "Audit with ID deleted successfully"}, 200
             else:
-                return {"message": "Audit with ID not found"}, 404
+                return {"message": "Audit with ID not found"}
         except Exception as e:
             print("Exception: ", e)
             return {"message": "Error: {}".format(str(e))}, 500
@@ -83,17 +85,36 @@ class GetConsumerAudit(Resource):
             audit_id = ObjectId(request.args.get('audit_id'))
             audit_data = AuditData.objects(id=audit_id).first()
             if audit_data is None:
-                return {"message" : "Audit Id Not Found"}, 404
+                return {"message" : "Audit Id Not Found"}
             audit = json.loads(audit_data.to_json())
-            date_fields = ["createdDate", "expiryDate", "signature_date", "lastmodified", "auditDate"]
+            try:
+                target_user = User.objects.get(name=audit["auditor_name"])   
+                supervisor_id = target_user.supervisor.id if target_user.supervisor else None    
+                supervisor = User.objects.get(id=supervisor_id)
+                audit["supervisor_name"]=supervisor.name
+            except DoesNotExist:
+                pass  
+            
+            if "auditDate" in audit:
+                ts = audit["auditDate"]
+                try:
+                    dt = parser.parse(ts)
+                    readable_date = dt.strftime('%d-%m-%Y %I:%M:%S %p')
+                except (ValueError, TypeError):
+                    readable_date = ""  
+                audit["auditDate"] = readable_date
+            date_fields = ["createdDate", "expiryDate", "signature_date", "lastmodified"]
             for field in date_fields:
                 if field in audit:
                     date_value = audit[field]
                     try:
+                        # If the date is in Unix timestamp format with "$date" key
                         if isinstance(date_value, dict) and "$date" in date_value:
                             unix_timestamp = date_value["$date"]
                             audit[field] = datetime.fromtimestamp(unix_timestamp / 1000).strftime('%Y-%m-%d %H:%M:%S')
-                        elif isinstance(date_value, str):                   
+                        # If the date is already a string, attempt to parse and format it
+                        elif isinstance(date_value, str):
+                            # Attempt to parse different possible string formats
                             try:
                                 audit[field] = datetime.strptime(date_value, '%d/%m/%Y %H:%M:%S').strftime('%Y-%m-%d %H:%M:%S')
                             except ValueError:
@@ -103,11 +124,15 @@ class GetConsumerAudit(Resource):
                                     try:
                                         audit[field] = datetime.strptime(date_value, '%d/%m/%Y').strftime('%Y-%m-%d %H:%M:%S')
                                     except ValueError:
-                                        pass  # Keep the original value if parsing fails
+                                        try:
+                                            audit[field] = datetime.strptime(date_value, '%Y-%m-%d').strftime('%Y-%m-%d %H:%M:%S')
+                                        except ValueError:
+                                            pass  # Keep the original value if parsing fails
+                        # If the date is already a datetime object
                         elif isinstance(date_value, datetime):
                             audit[field] = date_value.strftime('%Y-%m-%d %H:%M:%S')
                     except Exception as e:
-                        return (f"Error parsing date for field {field}: {date_value}, Error: {e}") 
+                        return (f"Error parsing date for field {field}: {date_value}, Error: {e}"), 500 
             return jsonify(audit)
         except Exception as e:
             print("Exception: ", e)
@@ -124,30 +149,38 @@ class GetConsumerAuditList(Resource):
         if user.role not in ["auditor", "supervisor", "admin"] and user.permission not in ["consumer", "all"]:
             return {'message': 'Unauthorized access'}, 401
         try:
+           
             data = request.get_json()
             page = int(data.get('page', 1))
             per_page = int(data.get('per_page', 12))
-            start_date_str = data.get('start_date')
-            end_date_str = data.get('end_date')
+            start_date = data.get('start_date')
+            end_date = data.get('end_date')
             region = data.get('region')
             status = data.get('status')
- 
-            start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+            sr_number = data.get('sr_number')            
             query = {}
             if start_date and end_date:
-                query['createdDate'] = {'$gte': start_date, '$lte': end_date}
+                query['auditDate'] = {'$gte': start_date, '$lte': end_date}
             elif start_date:
-                query['createdDate'] = {'$gte': start_date}
+                query['auditDate'] = {'$gte': start_date}
             elif end_date:
-                query['createdDate'] = {'$lte': end_date}
+                query['auditDate'] = {'$lte': end_date}
+            if sr_number:
+                query['sr_number'] = sr_number
             if region:
                 query['region'] = region
             if status:
-                query['status'] = status
-            if user.role != "supervisor" and user.role != "admin":
+                if status in ["Pending", "Submitted"]:
+                    query['status'] = {'$in': ["Pending", "Submitted"]}
+                else:
+                    query['status'] = status
+            if user.role not in ["supervisor", "admin"]:
                 query["auditor_name"] = user.name
-            audit_data = AuditData.objects(__raw__=query).order_by('-createdDate')
+            print(f"Query: {query}")  # Debug statement to print the query
+            
+            audit_data = AuditData.objects(__raw__=query).order_by('auditDate')
+            
+            print(f"Audit Data Count: {audit_data.count()}")
             total_records = audit_data.count()
             total_pages = math.ceil(total_records / per_page)  
             # Apply pagination after counting total records
@@ -156,15 +189,35 @@ class GetConsumerAuditList(Resource):
                 audit_list = []
                 for audit_d in audit_data:
                     audit = json.loads(audit_d.to_json())
-                    date_fields = ["createdDate", "expiryDate", "signature_date", "lastmodified", "auditDate"]
+                    try:
+                        target_user = User.objects.get(name=audit["auditor_name"])   
+                        supervisor_id = target_user.supervisor.id if target_user.supervisor else None    
+                        supervisor = User.objects.get(id=supervisor_id)
+                        audit["supervisor_name"]=supervisor.name
+                    except DoesNotExist:
+                        pass  
+                    if "auditDate" in audit:
+                        ts = audit["auditDate"]
+                        try:
+                            dt = parser.parse(ts)
+                            readable_date = dt.strftime('%d-%m-%Y %I:%M:%S %p')
+                        except (ValueError, TypeError):
+                            readable_date = ""  
+                        audit["auditDate"] = readable_date
+                    
+                    
+                    date_fields = ["createdDate", "expiryDate", "signature_date", "lastmodified"]
                     for field in date_fields:
                         if field in audit:
                             date_value = audit[field]
                             try:
+                                # If the date is in Unix timestamp format with "$date" key
                                 if isinstance(date_value, dict) and "$date" in date_value:
                                     unix_timestamp = date_value["$date"]
                                     audit[field] = datetime.fromtimestamp(unix_timestamp / 1000).strftime('%Y-%m-%d %H:%M:%S')
-                                elif isinstance(date_value, str):                   
+                                # If the date is already a string, attempt to parse and format it
+                                elif isinstance(date_value, str):
+                                    # Attempt to parse different possible string formats
                                     try:
                                         audit[field] = datetime.strptime(date_value, '%d/%m/%Y %H:%M:%S').strftime('%Y-%m-%d %H:%M:%S')
                                     except ValueError:
@@ -174,19 +227,23 @@ class GetConsumerAuditList(Resource):
                                             try:
                                                 audit[field] = datetime.strptime(date_value, '%d/%m/%Y').strftime('%Y-%m-%d %H:%M:%S')
                                             except ValueError:
-                                                pass  # Keep the original value if parsing fails
+                                                try:
+                                                    audit[field] = datetime.strptime(date_value, '%Y-%m-%d').strftime('%Y-%m-%d %H:%M:%S')
+                                                except ValueError:
+                                                    pass  # Keep the original value if parsing fails
+                                # If the date is already a datetime object
                                 elif isinstance(date_value, datetime):
                                     audit[field] = date_value.strftime('%Y-%m-%d %H:%M:%S')
                             except Exception as e:
-                                return (f"Error parsing date for field {field}: {date_value}, Error: {e}")
-                    audit_list.append(audit)
+                                return (f"Error parsing date for field {field}: {date_value}, Error: {e}"), 500 
+                    audit_list.append(audit)                   
                 return jsonify({
                     'audits': audit_list,
                     'total_pages': total_pages,
                     'current_page': page,
                 })
             else:
-                return {'message': 'No audits found with provided filters'}, 404
+                return {'message': 'No audits found with provided filters'}
         except Exception as e:
             print("Exception: ", e)
             return {'message': 'Error occurred while retrieving audits'}, 500
@@ -199,7 +256,7 @@ class AllTeams(Resource):
             teams_list = list(teams_list)
             return {"teams": teams_list}, 200
         except DoesNotExist:
-            return {"message": "No teams found"}, 404
+            return {"message": "No teams found"}
         except Exception as e:
             return {"message": "An error occurred while retrieving teams", "error": str(e)}, 500
 
@@ -223,10 +280,16 @@ class CreateConsumerAudit(Resource):
                     user_data = User.objects(id=sup_id).first()
                     if user_data:
                         supervisor_name = user_data.name
-            # Access form data
             data = request.form
-            ceqs_data = data.get('ceqvs')
-            form2_data = json.loads(ceqs_data)
+            ceqs_data = data.get('ceqvs') 
+            if ceqs_data is None:
+                ceqs_data = "[]"  # Set ceqs_data to an empty JSON array string if it's None
+            try:
+                form2_data = json.loads(ceqs_data)
+                if not isinstance(form2_data, list):
+                    form2_data = []
+            except (json.JSONDecodeError, TypeError):
+                form2_data = []
             current_date = datetime.now()
             expiry_date = current_date + timedelta(days=3)
             audit_data = AuditData(
@@ -272,23 +335,23 @@ class CreateConsumerAudit(Resource):
                     ceqv_images.append(obj["image"])  
             for image_key, file_data in image_file.items():
                 unique_filename = str(uuid.uuid4()) + '_' + secure_filename(file_data.filename)                
-                file_path = os.path.join("/app1/DSCE/PortalGateway/estore_backend/public/uploads/ceq/", str(unique_filename))
+                file_path = os.path.join("/app/static/consumer/", str(unique_filename))
                 if file_data and file_data.filename.strip():
                     if image_key == "audited_staff_signature":
                         print("######", file_data.filename)
-                        audit_data.audited_staff_signature = f"https://ossdev.etisalat.ae:8400/public/uploads/ceq/{unique_filename}"
+                        audit_data.audited_staff_signature = f"https://ossdev.etisalat.ae:8437/static/consumer/{unique_filename}"
                         send_image_to_server(file_data, file_path)
                     elif image_key == "audit_signature":
                         print("@@@@@@", file_data.filename)
-                        audit_data.audit_signature = f"https://ossdev.etisalat.ae:8400/public/uploads/ceq/{unique_filename}"
+                        audit_data.audit_signature = f"https://ossdev.etisalat.ae:8437/static/consumer/{unique_filename}"
                         send_image_to_server(file_data, file_path)               
                 if image_key in ceqv_images:
                     for obj in form2_data:
-                        if "image" in obj:
-                            if image_key == obj["image"]:
-                                if file_data is not None:
-                                    obj["image"] = "https://ossdev.etisalat.ae:8400/public/uploads/ceq/"+str(unique_filename)
-                                    send_image_to_server(file_data, file_path)  
+                        if file_data and file_data.filename.strip():                        
+                            if "image" in obj:
+                                if image_key == obj["image"]:
+                                        obj["image"] = "https://ossdev.etisalat.ae:8437/static/consumer/"+str(unique_filename)
+                                        send_image_to_server(file_data, file_path)  
                                     
             violations = [Violations(**violation) for violation in form2_data]
             audit_data.ceqvs =  violations
@@ -318,7 +381,7 @@ class UpdateConsumerAudit(Resource):
         audit_data = AuditData.objects(id=audit_id).first()
         image_file = request.files
         if audit_data is None:
-            return {"message": "Audit not found"}, 404
+            return {"message": "Audit not found"}
         try:
             if audit_data:
                 file_remove = []
@@ -334,7 +397,15 @@ class UpdateConsumerAudit(Resource):
                 print("file removel data ",file_remove)              
                 data = request.form
                 ceqs_data = data.get('ceqvs')
-                form2_data = json.loads(ceqs_data)
+                if ceqs_data is None:
+                    ceqs_data = "[]"  # Set ceqs_data to an empty JSON array string if it's None
+                try:
+                    form2_data = json.loads(ceqs_data)
+                    if not isinstance(form2_data, list):
+                        form2_data = []
+                except (json.JSONDecodeError, TypeError):
+                    form2_data = []
+                    
                 current_date = datetime.now()
                 expiry_date = current_date + timedelta(days=3)
                 # Update audit data
@@ -395,21 +466,21 @@ class UpdateConsumerAudit(Resource):
                                     
                 for image_key, file_data in request.files.items():
                     unique_filename = str(uuid.uuid4()) + '_' + file_data.filename
-                    file_path = os.path.join("/app1/DSCE/APIGateway/ceq_files/", str(unique_filename))
+                    file_path = os.path.join("/app/static/consumer/", str(unique_filename))
                     if image_key in ['audited_staff_signature', 'audit_signature']:
                         if image_key == 'audited_staff_signature':
                             if file_data is None or file_data.filename == '':
                                 if "audited_staff_signature" in audit_json:
                                     audit_data.update(set__audited_staff_signature=audit_json["audited_staff_signature"])                                    
                             else:  
-                                audit_data.update(set__audited_staff_signature= "https://ossdev.etisalat.ae:8400/public/uploads/ceq/"+str(unique_filename))
+                                audit_data.update(set__audited_staff_signature= "https://ossdev.etisalat.ae:8437/static/consumer/"+str(unique_filename))
                                 send_image_to_server(file_data,file_path)
                         elif image_key == 'audit_signature':
                             if file_data is None or file_data.filename == '':
                                 if "audit_signature" in audit_json:
                                     audit_data.update(set__audit_signature=audit_json["audit_signature"]) 
                             else:    
-                                audit_data.update(set__audit_signature="https://ossdev.etisalat.ae:8400/public/uploads/ceq/"+str(unique_filename))
+                                audit_data.update(set__audit_signature="https://ossdev.etisalat.ae:8437/static/consumer/"+str(unique_filename))
                                 send_image_to_server(file_data,file_path)        
                     if image_key in ceqv_images:
                         for obj in form2_data:
@@ -421,8 +492,9 @@ class UpdateConsumerAudit(Resource):
                                                 if obj["violation_code"] == ext["violation_code"]:
                                                    obj["image"] = ext["image"]                                                                                        
                                     else:            
-                                        obj["image"] = "https://ossdev.etisalat.ae:8400/public/uploads/ceq/"+str(unique_filename) 
-                                        send_image_to_server(file_data,file_path)         
+                                        obj["image"] = "https://ossdev.etisalat.ae:8437/static/consumer/"+str(unique_filename)
+                                        print("file_data", file_data) 
+                                        send_image_to_server(file_data,file_path)
                 audit_data.ceqvs.clear()                    
                 violations = [Violations(**violation) for violation in form2_data]
                 audit_data.ceqvs =  violations
@@ -446,22 +518,22 @@ class DeleteConsumerImage(Resource):
             return {"message":"'error': 'Unauthorized access'"}, 401
         try:
             img = str(request.json.get('image_path'))
-            image_path = "https://ossdev.etisalat.ae:8400/public/uploads/ceq/" + img
+            image_path = "https://ossdev.etisalat.ae:8437/static/consumer/" + img
             audit_id = ObjectId(request.args.get("audit_id"))
             audit_data = AuditData.objects(id=audit_id).first()
             if audit_data is None:
-                return {'message': 'Audit ID Not Found'}, 404
+                return {'message': 'Audit ID Not Found'}
             image_file = None
             # Delete images and update paths for specific image paths
-            exact_path = "/app1/DSCE/PortalGateway/estore_backend/public/uploads/ceq/"+img
+            exact_path = "/app/static/consumer/"+img
             flag = True            
             if  "audited_staff_signature" in audit_data:
-                if audit_data["audited_staff_signature"] == exact_path:
+                if audit_data["audited_staff_signature"] == image_path:
                     flag = False
                     send_image_to_server(image_file,file_path= exact_path) 
                     audit_data["audited_staff_signature"] = ""                
             if  "audit_signature" in audit_data:
-                if audit_data["audit_signature"] == exact_path:
+                if audit_data["audit_signature"] == image_path:
                     flag = False
                     send_image_to_server(image_file,file_path= exact_path) 
                     audit_data["audit_signature"] = ""            
@@ -470,13 +542,13 @@ class DeleteConsumerImage(Resource):
                     if "image" in obj and obj["image"] == image_path:
                         flag = False                           
                         image_file = None
-                        exact_path= "/app1/DSCE/PortalGateway/estore_backend/public/uploads/ceq/" + img
+                        exact_path= "/app/static/consumer/" + img
                         send_image_to_server(image_file,file_path= exact_path)      
                         obj["image"] = ""
             if flag:
                 exist = check_file_exit(exact_path) 
                 if exist != True:
-                    return {'message': 'file does not exist'}, 404                             
+                    return {'message': 'file does not exist'}                             
             # Save modified audit data
             print(audit_data)
             audit_data.save()
@@ -533,7 +605,7 @@ class TechnicianDetails(Resource):
             tech_pt_number = request.args.get("tech_pt")
             technician = Technicians.objects(tech_pt=tech_pt_number).first()
             if not technician:
-                return {'message': 'Technician not found'}, 404
+                return {'message': 'Technician not found'}
             return json.loads(technician.to_json()), 200
         except Exception as e:
             print("Failed to retrieve technician details due to:", e)
@@ -561,8 +633,7 @@ class SearchTechnicians(Resource):
                     Q(field_supervisor__icontains=search_query)
                 )
             else:
-                technicians = Technicians.objects.all()
-            print(list(technicians))    
+                technicians = Technicians.objects.all()   
             serialized_data = [json.loads(technician.to_json()) for technician in technicians]
             return {'technicians': serialized_data}, 200
         except Exception as e:
@@ -608,7 +679,7 @@ class UpdateTechnician(Resource):
             # Retrieve the technician to update
             technician = Technicians.objects(tech_pt=tech_pt_number).first()
             if not technician:
-                return {'message': 'Technician not found'}, 404
+                return {'message': 'Technician not found'}
  
             # Update the technician fields
             technician.emp_no = str(data.get('emp_no', technician.emp_no))
@@ -636,7 +707,7 @@ class DeleteTechnician(Resource):
             tech_pt_number = request.args.get("tech_pt")
             technician = Technicians.objects(tech_pt=tech_pt_number).first()
             if not technician:
-                return {'message': 'Technician not found'}, 404
+                return {'message': 'Technician not found'}
             technician.delete()
             return {'message': 'Technician deleted successfully'}, 200
         except Exception as e:
@@ -731,46 +802,131 @@ class UploadCSV(Resource):
         
 
 
+
+ 
+
+        
+def send_image_to_server(image_file, file_path):
+    try:
+        if image_file is None:
+            print("File data is not available")
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"File at {file_path} has been removed")
+            else:
+                print(f"No file found at {file_path} to remove")
+        else:
+            print("File data is available")
+            print("file_path ", file_path)
+            with open(file_path, 'wb') as f:
+                f.write(image_file.read())
+            print(f"File saved successfully at {file_path}")
+        return {'message': 'Image processed successfully'}
+    except Exception as e:
+        return {'error': str(e)}  
+    
+    
+    
+## This Function i used to check given file path is available or not     
+def check_file_exit(file_path):
+    try:
+        if os.path.exists(file_path):
+            return True
+        else:
+            return False
+    except Exception as e:
+        return {'error': str(e)}  
+
+
+
 class ExportCSV(Resource):
+    @jwt_required()
     def get(self):
         try:
+            # Authenticate user
+            user = User.objects.get(id=get_jwt_identity()['id'])
+        except DoesNotExist:
+            return {'message': 'Unauthorized'}, 401
+ 
+        # Check if the user has permission
+        if user.role not in ["auditor", "supervisor", "admin"] and user.permission not in ["consumer", "all"]:
+            return {'message': 'Unauthorized access'}, 401
+ 
+        try:
+            # Parse request parameters
             start_date_str = request.args.get('start_date')
             end_date_str = request.args.get('end_date')
             region = request.args.get('region')
-            check_ceq = []
-            for i in range(1,60):
-                d = {}                 
-                d[f"ceqv_{i}_category_code"] = ""
-                d[f"ceqv_{i}_description"] = ""
-                d[f"ceqv_{i}_remarks"] = ""
-                d[f"ceqv_{i}_severity"] = ""
-                check_ceq.append(d)
+            status = request.args.get('status')
+            sr_number = request.args.get('sr_number')
+ 
+            # Calculate default start and end dates for the last 30 days
+            now = datetime.now()
+            default_start_date = now - timedelta(days=30)
+            default_end_date = now
+ 
             query = {}
-            start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
-            end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
-            if start_date and end_date:
-                query['createdDate'] = {'$gte': start_date, '$lte': end_date}
-            elif start_date:
-                query['createdDate'] = {'$gte': start_date}
-            elif end_date:
-                query['createdDate'] = {'$lte': end_date}
+            if start_date_str and end_date_str:
+                start_date =start_date_str
+                end_date = end_date_str
+                query['auditDate'] = {'$gte': str(start_date), '$lte': str(end_date)}
+ 
             if region:
                 query['region'] = region
-            audit_data = AuditData.objects(__raw__=query).order_by('-createdDate') 
+            if status:
+                if status in ["pending", "submitted"]:
+                    query['status'] = {'$in': ["pending", "submit"]}
+                else:
+                    query['status'] = status
+            if sr_number:
+                query['sr_number'] = sr_number
+ 
+            if user.role not in ["supervisor", "admin"]:
+                query["auditor_name"] = user.name
+            print("Query:  ",query)
+            # Retrieve and order the audit data
+            audit_data = AuditData.objects(__raw__=query).order_by('auditDate')
+ 
             csv_data = []
+            vls_code = {
+                "CEQV01": 1.1, "CEQV02": 1.2, "CEQV03": 1.3, "CEQV04": 1.4, "CEQV05": 1.5,
+                "CEQV06": 1.6, "CEQV07": 2.7, "CEQV08": 2.8, "CEQV09": 2.9, "CEQV10": 2.10,
+                "CEQV11": 2.11, "CEQV12": 2.12, "CEQV13": 3.13, "CEQV14": 3.14, "CEQV15": 3.15,
+                "CEQV16": 3.16, "CEQV17": 3.17, "CEQV18": 4.18, "CEQV19": 4.19, "CEQV20": 4.20,
+                "CEQV21": 4.21, "CEQV22": 4.22, "CEQV23": 4.23, "CEQV24": 4.24, "CEQV25": 4.25,
+                "CEQV26": 4.26, "CEQV27": 4.27, "CEQV28": 5.28, "CEQV29": 5.29, "CEQV30": 5.30,
+                "CEQV31": 5.31, "CEQV32": 5.32, "CEQV33": 5.33, "CEQV34": 5.34, "CEQV35": 5.35,
+                "CEQV36": 5.36, "CEQV37": 6.37, "CEQV38": 6.38, "CEQV39": 6.39, "CEQV40": 6.40,
+                "CEQV41": 6.41, "CEQV42": 6.42, "CEQV43": 6.43, "CEQV44": 6.44, "CEQV45": 6.45,
+                "CEQV46": 6.46, "CEQV47": 6.47, "CEQV48": 6.48, "CEQV49": 6.49, "CEQV50": 6.50,
+                "CEQV51": 6.51, "CEQV52": 6.52, "CEQV53": 6.53, "CEQV54": 6.54, "CEQV55": 6.55,
+                "CEQV56": 6.56, "CEQV57": 6.57, "CEQV58": 6.58, "CEQV59": 6.59
+            }
+ 
             if audit_data:
                 for row in audit_data:
+                    flattened_data = {}
                     data = json.loads(row.to_json())
-                    # Define a function to handle missing fields
+ 
+                    # Function to handle missing fields
                     def get_field_value(key):
                         return data.get(key, "") if data else ""
+                    timestamp = get_field_value("auditDate")
+                    try:
+                        # Use dateutil.parser to automatically detect and parse the date
+                        dt = parser.parse(timestamp)
+                        # Convert the datetime to the desired format: "DD-MM-YYYY HH:MM:SS AM/PM"
+                        readable_date = dt.strftime('%d-%m-%Y %I:%M:%S %p')
+                    except (ValueError, TypeError):
+                        # Handle cases where the date is invalid or missing
+                        readable_date = ""  
+                        
+                    print("******",readable_date)    
+                                               
                     flattened_data = {
-                        "auditDate": get_field_value("createdDate"),
-                        "auditedDateTime": get_field_value("auditedDateTime"),
-                        "auditor_id": get_field_value("auditor_id"),
+                        "auditDate":readable_date,
                         "auditor_name": get_field_value("auditor_name"),
                         "controller": get_field_value("controller"),
-                        "createdDate": get_field_value("createdDate"),
                         "director": get_field_value("director"),
                         "duty_manager": get_field_value("duty_manager"),
                         "group_head": get_field_value("group_head"),
@@ -793,84 +949,196 @@ class ExportCSV(Resource):
                         "vehicle_number": get_field_value("vehicle_number"),
                         "vendor": get_field_value("vendor")
                     }
-                    
-                    date_fields = ["createdDate", "expiryDate", "signature_date", "lastmodified", "auditDate"]
-                    for field in date_fields:
-                        if field in flattened_data:
-                            if field == "auditDate" and "auditDate" in flattened_data:
-                                if "$date" in flattened_data["auditDate"]:
-                                    unix_timestamp = flattened_data[field]["$date"]
-                                    flattened_data[field] = datetime.fromtimestamp(unix_timestamp / 1000).strftime('%Y-%m-%d %H:%M:%S')
-                            else:       
-                                unix_timestamp = flattened_data[field]["$date"]
-                                flattened_data[field] = datetime.fromtimestamp(unix_timestamp / 1000).strftime('%Y-%m-%d %H:%M:%S')
-                                flattened_data[field] 
-                    
-                    for i, ceqv in enumerate(data.get("ceqvs", [])):
-                        flattened_data.update({
-                            f"ceqv_{i+1}_category_code": ceqv.get("category_code", ""),
-                            f"ceqv_{i+1}_description": ceqv.get("description", ""),
-                            f"ceqv_{i+1}_remarks": ceqv.get("remarks", ""),
-                            f"ceqv_{i+1}_severity": ceqv.get("severity", "")
-                        })
-                    for f in check_ceq:
-                        for key in f.keys():
-                            if key not in flattened_data:
-                                flattened_data[key] = ""
+ 
+                    # Ensure all CEQV columns are included with a default value of 0
+                    for code, col_name in vls_code.items():
+                        flattened_data[str(col_name)] = 0  # Default to 0 for missing columns
+                        flattened_data[f"remark_{col_name}"] = ""  # Default remark to an empty string
+ 
+                    # Flatten CEQVs and update existing columns
+                    for ceqv in data.get("ceqvs", []):
+                        violation_code = ceqv.get("violation_code")
+                        violation_type = ceqv.get("violation_type", False)
+                        remark = ceqv.get("remarks", "")
+ 
+                        if violation_code in vls_code:
+                            converted_value = 1 if violation_type else 0
+                            col_name = str(vls_code[violation_code])
+                            flattened_data[col_name] = converted_value
+                            flattened_data[f"remark_{col_name}"] = remark  # Set the remark for the violation
+ 
                     csv_data.append(flattened_data)
+ 
+            # Prepare the CSV fieldnames, including dynamic CEQV columns and corresponding remarks
+            fieldnames = [
+                "auditDate", "auditor_name", "controller", "director", "duty_manager", 
+                "group_head", "region", "shortdescription", "sr_manager",
+                "sr_number", "status", "superviser_comment", "supervisor", "supervisor_contact",
+                "supervisor_id", "team", "tech_contact", "tech_ein", "tech_fullname", "tech_pt",
+                "tech_skills", "user_action", "vehicle_number", "vendor"
+            ] + list(map(str, vls_code.values())) + [f"remark_{col}" for col in vls_code.values()]
+ 
             # Write the data to a CSV file
             csv_file_path = 'exported_data.csv'
             with open(csv_file_path, 'w', newline='') as file:
-                fieldnames = csv_data[0].keys() if csv_data else []
                 writer = csv.DictWriter(file, fieldnames=fieldnames)
                 writer.writeheader()
                 for row in csv_data:
                     writer.writerow(row)
+ 
             # Return the CSV file for download
             return send_file(csv_file_path, as_attachment=True)
-        except Exception as e:
-            print(e)            
-            return {"error": str(e)}, 500
  
+        except Exception as e:
+            print(e)
+            return {"error": str(e)}, 500
 
-        
-# Function to send image data to the other server using Paramiko
-def send_image_to_server(image_file,file_path,):
-    try:
-        # Connect to the remote server via SSH
-        ssh_client = paramiko.SSHClient()
-        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh_client.connect('10.106.22.167', username='admin', password='zxcvbnm,./')  # Replace with actual credentials
-        # Transfer the image file to the remote server
-        sftp_client = ssh_client.open_sftp()
-        if image_file == None:
-           sftp_client.remove(file_path)
-        else:
-            sftp_client.putfo(image_file, file_path)  # Replace with the destination path on the server
-        sftp_client.close()
-        # Close the SSH connection
-        ssh_client.close()
-        return {'message': 'Image uploaded successfully'}
-    except Exception as e:
-        return {'error': str(e)}    
-    
-    
-  
-## This Function i used to check given file path is available or not     
-def check_file_exit(file_path):
-    try:
-        # Connect to the remote server via SSH
-        ssh_client = paramiko.SSHClient()
-        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh_client.connect('10.106.22.167', username='admin', password='zxcvbnm,./')  # Replace with actual credentials
-        # Check if the image exists on the server
-        sftp_client = ssh_client.open_sftp()
+
+
+
+"""
+class ExportCSV(Resource):
+    @jwt_required()
+    def get(self):
         try:
-            sftp_client.stat(file_path)
-            exist = True
-        except FileNotFoundError:
-            exist =  False
-        return exist
-    except Exception as e:
-        return {'error': str(e)}     
-
+            # Authenticate user
+            user = User.objects.get(id=get_jwt_identity()['id'])
+        except DoesNotExist:
+            return {'message': 'Unauthorized'}, 401
+ 
+        # Check if the user has permission
+        if user.role not in ["auditor", "supervisor", "admin"] and user.permission not in ["consumer", "all"]:
+            return {'message': 'Unauthorized access'}, 401
+ 
+        try:
+            # Parse request parameters
+            start_date_str = request.args.get('start_date')
+            end_date_str = request.args.get('end_date')
+            region = request.args.get('region')
+            status = request.args.get('status')
+            sr_number = request.args.get('sr_number')
+ 
+            # Calculate default start and end dates for the last 30 days
+            now = datetime.now()
+            default_start_date = now - timedelta(days=30)
+            default_end_date = now
+ 
+            query = {}
+            if start_date_str and end_date_str:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+                query['auditDate'] = {'$gte': start_date, '$lte': end_date}
+ 
+            if region:
+                query['region'] = region
+            if status:
+                if status in ["pending", "submitted"]:
+                    query['status'] = {'$in': ["pending", "submit"]}
+                else:
+                    query['status'] = status
+            if sr_number:
+                query['sr_number'] = sr_number
+ 
+            if user.role not in ["supervisor", "admin"]:
+                query["auditor_name"] = user.name
+ 
+            # Retrieve and order the audit data
+            audit_data = AuditData.objects(__raw__=query).order_by('auditDate')
+ 
+            csv_data = []
+            vls_code = {
+                "CEQV01": 1.1, "CEQV02": 1.2, "CEQV03": 1.3, "CEQV04": 1.4, "CEQV05": 1.5,
+                "CEQV06": 1.6, "CEQV07": 2.7, "CEQV08": 2.8, "CEQV09": 2.9, "CEQV10": 2.10,
+                "CEQV11": 2.11, "CEQV12": 2.12, "CEQV13": 3.13, "CEQV14": 3.14, "CEQV15": 3.15,
+                "CEQV16": 3.16, "CEQV17": 3.17, "CEQV18": 4.18, "CEQV19": 4.19, "CEQV20": 4.20,
+                "CEQV21": 4.21, "CEQV22": 4.22, "CEQV23": 4.23, "CEQV24": 4.24, "CEQV25": 4.25,
+                "CEQV26": 4.26, "CEQV27": 4.27, "CEQV28": 5.28, "CEQV29": 5.29, "CEQV30": 5.30,
+                "CEQV31": 5.31, "CEQV32": 5.32, "CEQV33": 5.33, "CEQV34": 5.34, "CEQV35": 5.35,
+                "CEQV36": 5.36, "CEQV37": 6.37, "CEQV38": 6.38, "CEQV39": 6.39, "CEQV40": 6.40,
+                "CEQV41": 6.41, "CEQV42": 6.42, "CEQV43": 6.43, "CEQV44": 6.44, "CEQV45": 6.45,
+                "CEQV46": 6.46, "CEQV47": 6.47, "CEQV48": 6.48, "CEQV49": 6.49, "CEQV50": 6.50,
+                "CEQV51": 6.51, "CEQV52": 6.52, "CEQV53": 6.53, "CEQV54": 6.54, "CEQV55": 6.55,
+                "CEQV56": 6.56, "CEQV57": 6.57, "CEQV58": 6.58, "CEQV59": 6.59
+            }
+ 
+            if audit_data:
+                for row in audit_data:
+                    flattened_data = {}
+                    data = json.loads(row.to_json())
+ 
+                    # Function to handle missing fields
+                    def get_field_value(key):
+                        return data.get(key, "") if data else ""
+ 
+                    # Populate default values for all standard fields
+                    flattened_data = {
+                        "auditDate": get_field_value("auditDate"),
+                        "auditedDateTime": get_field_value("auditedDateTime"),
+                        "auditor_id": get_field_value("auditor_id"),
+                        "auditor_name": get_field_value("auditor_name"),
+                        "controller": get_field_value("controller"),
+                        "director": get_field_value("director"),
+                        "duty_manager": get_field_value("duty_manager"),
+                        "expiryDate": get_field_value("expiryDate"),
+                        "group_head": get_field_value("group_head"),
+                        "region": get_field_value("region"),
+                        "shortdescription": get_field_value("shortdescription"),
+                        "sr_manager": get_field_value("sr_manager"),
+                        "sr_number": get_field_value("sr_number"),
+                        "status": get_field_value("status"),
+                        "superviser_comment": get_field_value("superviser_comment"),
+                        "supervisor": get_field_value("supervisor"),
+                        "supervisor_contact": get_field_value("supervisor_contact"),
+                        "supervisor_id": get_field_value("supervisor_id"),
+                        "team": get_field_value("team"),
+                        "tech_contact": get_field_value("tech_contact"),
+                        "tech_ein": get_field_value("tech_ein"),
+                        "tech_fullname": get_field_value("tech_fullname"),
+                        "tech_pt": get_field_value("tech_pt"),
+                        "tech_skills": get_field_value("tech_skills"),
+                        "user_action": get_field_value("user_action"),
+                        "vehicle_number": get_field_value("vehicle_number"),
+                        "vendor": get_field_value("vendor")
+                    }
+ 
+                    # Ensure all CEQV columns are included with a default value of 0
+                    for code, col_name in vls_code.items():
+                        flattened_data[str(col_name)] = 0  # Default to 0 for missing columns
+ 
+                    # Flatten CEQVs and update existing columns
+                    for ceqv in data.get("ceqvs", []):
+                        violation_code = ceqv.get("violation_code")
+                        violation_code = ceqv.get("remarks")
+                        violation_type = ceqv.get("violation_type", False)
+                        if violation_code in vls_code:
+                            converted_value = 1 if violation_type else 0
+                            flattened_data[str(vls_code[violation_code])] = converted_value
+ 
+                    csv_data.append(flattened_data)
+ 
+            # Prepare the CSV fieldnames, including dynamic CEQV columns
+            fieldnames = [
+                "auditDate", "auditedDateTime", "auditor_id", "auditor_name", "controller",
+                "director", "duty_manager", "expiryDate", "group_head", "region", "shortdescription", "sr_manager",
+                "sr_number", "status", "superviser_comment", "supervisor", "supervisor_contact",
+                "supervisor_id", "team", "tech_contact", "tech_ein", "tech_fullname", "tech_pt",
+                "tech_skills", "user_action", "vehicle_number", "vendor"
+            ] + list(map(str, vls_code.values()))
+ 
+            # Write the data to a CSV file
+            csv_file_path = 'exported_data.csv'
+            with open(csv_file_path, 'w', newline='') as file:
+                writer = csv.DictWriter(file, fieldnames=fieldnames)
+                writer.writeheader()
+                for row in csv_data:
+                    writer.writerow(row)
+ 
+            # Return the CSV file for download
+            return send_file(csv_file_path, as_attachment=True)
+ 
+        except Exception as e:
+            print(e)
+            return {"error": str(e)}, 500
+            
+            
+"""            

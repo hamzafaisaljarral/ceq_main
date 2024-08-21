@@ -5,3 +5,12 @@ __pycache__
 *.db
 *.sqlite
 *.log
+static/
+*.log
+*.tmp
+*.business
+*.company_name
+*.consumer
+*.consumer_img
+*.fdh
+.env
