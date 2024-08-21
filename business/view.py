@@ -46,8 +46,12 @@ class CreateBusinessAudit(Resource):
                         file_path = os.path.join("/app/static/business/", unique_filename)
                         send_image_to_server(file_data, file_path)
                         setattr(audit_document, image_key, "https://ossdev.etisalat.ae:8437/static/business/" + unique_filename)
+<<<<<<< HEAD
             # Save the new audit document with date and time
             audit_document.date_and_time = date_time
+=======
+            # Save the new audit document
+>>>>>>> refs/remotes/origin/main
             audit_document.save()
             return {'message': 'Audit record created successfully',
                     'audit_id': str(audit_document.id)}, 201
@@ -95,9 +99,14 @@ class UploadExcelBusinessAudit(Resource):
  
                 business_audit = BusinessAudit(
                     sn=record.get("SN"),
+<<<<<<< HEAD
                     date_and_time=formatted_date,
                     date_of_visit=record.get("date_of_visit"),
                     sr_dkt_no=sr_dkt_no_value,
+=======
+                    date_of_visit=record.get("Date of Visit "),
+                    sr_dkt_no=str(record.get("SR/DKT NO")),
+>>>>>>> refs/remotes/origin/main
                     region=record.get("REGION"),
                     sub_region=record.get('SUB REGION'),
                     product_group=record.get("PRODUCT GROUP DESC"),
@@ -112,7 +121,11 @@ class UploadExcelBusinessAudit(Resource):
                     fdh_no=str(record.get("FDH NO")),
                     account_no=str(record.get("ACCOUNT NO")),
                     customer_name=record.get("CUSTOMER NAME"),
+<<<<<<< HEAD
                     account_category=record.get("Party Sub Type"),
+=======
+                    account_category=record.get("A/C CATEGORY"),
+>>>>>>> refs/remotes/origin/main
                     sr_group=record.get("SRGroup"),
                     cbcm_close_date=record.get("Closed date"),
                     latitude=str(record.get("LATITUDE")),
@@ -306,12 +319,32 @@ class UpdateBusinessAudit(Resource):
                 if image_key in ["photo1","photo2","photo3","photo4","photo5","photo6"]:
                     if file_data is None or file_data.filename == '':                     
                         setattr(audit_document, image_key, audit_document[image_key])
+<<<<<<< HEAD
                     elif audit_document[image_key] != "" or file_data:
                         unique_filename = str(uuid.uuid4()) + '_' + secure_filename(file_data.filename)
                         file_path = os.path.join("/app/static/business/", unique_filename)
                         send_image_to_server(file_data, file_path)
                         print("file_path ", file_path)
                         setattr(audit_document, image_key, "https://ossdev.etisalat.ae:8437/static/business/" + unique_filename)
+=======
+                    else:                        
+                        if audit_document[image_key] != "":
+                            print(image_key)
+                            path = audit_document[image_key]
+                            print(path)
+                            split_path = path.split('business/')
+                            file_name = split_path[-1]
+                            exact_path= "/app/static/business/" + file_name
+                            d_data = None 
+                            send_image_to_server(file_data, file_path= exact_path)                                                
+                        unique_filename = str(uuid.uuid4()) + '_' + secure_filename(file_data.filename)                
+                        file_path = os.path.join("/app/static/business/", str(unique_filename))
+                        print("file_path ",file_path)
+                        send_image_to_server(file_data, file_path)
+                        value = "https://ossdev.etisalat.ae:8437/static/business/"+str(unique_filename)
+                        print("value  ")
+                        setattr(audit_document, image_key, value)
+>>>>>>> refs/remotes/origin/main
             # Save the updated audit document
             setattr(audit_document, "ceq_auditor_name", audit_document.ceq_auditor_name)
             setattr(audit_document, "date_and_time", date)
@@ -443,7 +476,10 @@ class BusinessAuditDownload(Resource):
             region = request.args.get('region')
             sr_dkt_no = request.args.get("sr_dkt_no")
             violation = request.args.get("violation")
+<<<<<<< HEAD
             status = request.args.get("status")
+=======
+>>>>>>> refs/remotes/origin/main
             start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
             end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
             query = {}
@@ -458,12 +494,17 @@ class BusinessAuditDownload(Resource):
             if sr_dkt_no:
                 query['sr_dkt_no'] = sr_dkt_no  
             if violation:
+<<<<<<< HEAD
                 query['violation'] = violation  
             if status:
                 query["status"] = status     
             if user.role not in ["supervisor","admin"]:
                 query["ceq_auditor_name"] = {"$in": [user.username, user.name], "$ne": ""}     
             audit_data = BusinessAudit.objects(__raw__=query).order_by('date_and_time')
+=======
+                query['violation'] = violation       
+            audit_data = BusinessAudit.objects(__raw__=query).order_by('-date_of_visit')
+>>>>>>> refs/remotes/origin/main
             total_records = audit_data.count()
             if audit_data is None:
                 return {"message": "Audit's Not Found"}

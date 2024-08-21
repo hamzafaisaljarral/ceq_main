@@ -12,11 +12,18 @@ from over_view.view import AuditDashboardQuarter, AuditDashboardYear, OverViewRe
 from consumer.report_view import RegionComplianceReport, RegionComplianceReportGraph, RegionComplianceReportSharedZone, \
     RegionNonComplianceTopContributor, SharedzoneNonComplianceTopContributor, OtherNonComplianceTopContributor, \
     CategoryNonComplianceContributor, AuditedTechnicians, ComplianceandNonComplianceImages, NonComplianceCategoryLastSixMonths
+<<<<<<< HEAD
 from business.report_view import RegionComplianceBusinessReport, CategoryBusinessReport, OverallBusinessReport, \
     AccountCategory, RegionWisePastData, NonComplianceContributerSixMonths, NonComplianceContributerVistor, \
     BusinessComplianceandNonComplianceImages 
 from fdh.fdh_view import CreateFdh, FdhDetails, FdhList, DeleteFdh, UpdateFdh, DeleteImage, GetFdhVisits,\
     GetFdhViolations, DeleteVisit, FdhMap
+=======
+
+from business.report_view import RegionComplianceBusinessReport, CategoryBusinessReport, OverallBusinessReport, \
+    AccountCategory, RegionWisePastData, NonComplianceContributerSixMonths, NonComplianceContributerVistor, \
+    BusinessComplianceandNonComplianceImages
+>>>>>>> refs/remotes/origin/main
 
 
 
@@ -82,6 +89,11 @@ def initialize_routes(app):
     api.add_resource(AuditedTechnicians, '/ceq/report/region/technician/audits')
     api.add_resource(ComplianceandNonComplianceImages, '/ceq/report/region/images/audits')
     api.add_resource(NonComplianceCategoryLastSixMonths, '/ceq/report/region/non-complaince/category')
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> refs/remotes/origin/main
     #report business compliance and non compliance
     api.add_resource(RegionComplianceBusinessReport, '/ceq/business/report/region')
     api.add_resource(CategoryBusinessReport, '/ceq/business/report/category')
@@ -91,6 +103,7 @@ def initialize_routes(app):
     api.add_resource(NonComplianceContributerSixMonths, '/ceq/business/non-compliance/months')
     api.add_resource(NonComplianceContributerVistor, '/ceq/business/non-compliance/companies')
     api.add_resource(BusinessComplianceandNonComplianceImages, '/ceq/business/images')
+<<<<<<< HEAD
     
     #FDH Module path
     api.add_resource(CreateFdh, '/ceq/fdh/create')
@@ -113,5 +126,7 @@ def initialize_routes(app):
     
     
     
+=======
+>>>>>>> refs/remotes/origin/main
 
     

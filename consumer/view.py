@@ -157,28 +157,56 @@ class GetConsumerAuditList(Resource):
             end_date = data.get('end_date')
             region = data.get('region')
             status = data.get('status')
+<<<<<<< HEAD
             sr_number = data.get('sr_number')            
+=======
+            sr_number = data.get('sr_number')
+            
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d') if start_date_str else None
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d') if end_date_str else None
+            
+>>>>>>> refs/remotes/origin/main
             query = {}
+            
             if start_date and end_date:
+<<<<<<< HEAD
                 query['auditDate'] = {'$gte': start_date, '$lte': end_date}
+=======
+                # Adding time to the end_date to include the entire end day
+                end_date = datetime.combine(end_date, datetime.max.time())
+                query['createdDate'] = {'$gte': start_date, '$lte': end_date}
+>>>>>>> refs/remotes/origin/main
             elif start_date:
                 query['auditDate'] = {'$gte': start_date}
             elif end_date:
+<<<<<<< HEAD
                 query['auditDate'] = {'$lte': end_date}
+=======
+                end_date = datetime.combine(end_date, datetime.max.time())
+                query['createdDate'] = {'$lte': end_date}
+>>>>>>> refs/remotes/origin/main
             if sr_number:
                 query['sr_number'] = sr_number
             if region:
                 query['region'] = region
             if status:
+<<<<<<< HEAD
                 if status in ["Pending", "Submitted"]:
                     query['status'] = {'$in': ["Pending", "Submitted"]}
                 else:
                     query['status'] = status
+=======
+                query['status'] = status
+>>>>>>> refs/remotes/origin/main
             if user.role not in ["supervisor", "admin"]:
                 query["auditor_name"] = user.name
             print(f"Query: {query}")  # Debug statement to print the query
             
+<<<<<<< HEAD
             audit_data = AuditData.objects(__raw__=query).order_by('auditDate')
+=======
+            audit_data = AuditData.objects(__raw__=query).order_by('-createdDate')
+>>>>>>> refs/remotes/origin/main
             
             print(f"Audit Data Count: {audit_data.count()}")
             total_records = audit_data.count()
@@ -801,6 +829,7 @@ class UploadCSV(Resource):
             return {"error": str(e)}, 500
         
 
+<<<<<<< HEAD
 
 
  
@@ -839,10 +868,13 @@ def check_file_exit(file_path):
 
 
 
+=======
+>>>>>>> refs/remotes/origin/main
 class ExportCSV(Resource):
     @jwt_required()
     def get(self):
         try:
+<<<<<<< HEAD
             # Authenticate user
             user = User.objects.get(id=get_jwt_identity()['id'])
         except DoesNotExist:
@@ -853,17 +885,23 @@ class ExportCSV(Resource):
             return {'message': 'Unauthorized access'}, 401
  
         try:
+=======
+>>>>>>> refs/remotes/origin/main
             # Parse request parameters
             start_date_str = request.args.get('start_date')
             end_date_str = request.args.get('end_date')
             region = request.args.get('region')
             status = request.args.get('status')
             sr_number = request.args.get('sr_number')
+<<<<<<< HEAD
  
+=======
+>>>>>>> refs/remotes/origin/main
             # Calculate default start and end dates for the last 30 days
             now = datetime.now()
             default_start_date = now - timedelta(days=30)
             default_end_date = now
+<<<<<<< HEAD
  
             query = {}
             if start_date_str and end_date_str:
@@ -887,6 +925,29 @@ class ExportCSV(Resource):
             # Retrieve and order the audit data
             audit_data = AuditData.objects(__raw__=query).order_by('auditDate')
  
+=======
+            query = {}
+            if start_date_str and end_date_str:
+                start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+                end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+                query = {
+                'createdDate': {'$gte': start_date, '$lte': end_date}
+                }
+            if region:
+                query['region'] = region
+            if status:
+                query['status'] = status
+            if sr_number:
+                query['sr_number'] = sr_number
+            if not query:
+                query = {
+                'createdDate': {'$gte': default_start_date, '$lte': default_end_date}
+                }
+            # Retrieve and order the audit data
+            audit_data = AuditData.objects(__raw__=query).order_by('-createdDate')
+            print("query: ",query)
+            print("DDDDD",list(audit_data))
+>>>>>>> refs/remotes/origin/main
             csv_data = []
             vls_code = {
                 "CEQV01": 1.1, "CEQV02": 1.2, "CEQV03": 1.3, "CEQV04": 1.4, "CEQV05": 1.5,
@@ -907,8 +968,13 @@ class ExportCSV(Resource):
                 for row in audit_data:
                     flattened_data = {}
                     data = json.loads(row.to_json())
+<<<<<<< HEAD
  
                     # Function to handle missing fields
+=======
+                    print("audit data",data)
+                    # Define a function to handle missing fields
+>>>>>>> refs/remotes/origin/main
                     def get_field_value(key):
                         return data.get(key, "") if data else ""
                     timestamp = get_field_value("auditDate")
@@ -924,11 +990,18 @@ class ExportCSV(Resource):
                     print("******",readable_date)    
                                                
                     flattened_data = {
+<<<<<<< HEAD
                         "auditDate":readable_date,
+=======
+                        "auditDate": get_field_value("auditDate"),
+                        "auditedDateTime": get_field_value("auditedDateTime"),
+                        "auditor_id": get_field_value("auditor_id"),
+>>>>>>> refs/remotes/origin/main
                         "auditor_name": get_field_value("auditor_name"),
                         "controller": get_field_value("controller"),
                         "director": get_field_value("director"),
                         "duty_manager": get_field_value("duty_manager"),
+                        "expiryDate": get_field_value("expiryDate"),
                         "group_head": get_field_value("group_head"),
                         "region": get_field_value("region"),
                         "shortdescription": get_field_value("shortdescription"),
@@ -950,6 +1023,7 @@ class ExportCSV(Resource):
                         "vendor": get_field_value("vendor")
                     }
  
+<<<<<<< HEAD
                     # Ensure all CEQV columns are included with a default value of 0
                     for code, col_name in vls_code.items():
                         flattened_data[str(col_name)] = 0  # Default to 0 for missing columns
@@ -977,6 +1051,41 @@ class ExportCSV(Resource):
                 "supervisor_id", "team", "tech_contact", "tech_ein", "tech_fullname", "tech_pt",
                 "tech_skills", "user_action", "vehicle_number", "vendor"
             ] + list(map(str, vls_code.values())) + [f"remark_{col}" for col in vls_code.values()]
+=======
+                    date_fields = ["createdDate", "expiryDate", "signature_date", "lastmodified", "auditDate"]
+                    for field in date_fields:
+                        if field in flattened_data and isinstance(flattened_data[field], dict) and "$date" in flattened_data[field]:
+                            unix_timestamp = flattened_data[field]["$date"]
+                            flattened_data[field] = datetime.fromtimestamp(unix_timestamp / 1000).strftime('%Y-%m-%d %H:%M:%S')
+ 
+                    # Flatten ceqvs
+                    for i, ceqv in enumerate(data.get("ceqvs", []), 1):
+                        if i > 59:
+                            break
+                        flattened_data[f"ceqv_{i}_category_code"] = ceqv.get("category_code", "")
+                        flattened_data[f"ceqv_{i}_description"] = ceqv.get("description", "")
+                        flattened_data[f"ceqv_{i}_remarks"] = ceqv.get("remarks", "")
+                        flattened_data[f"ceqv_{i}_severity"] = ceqv.get("severity", "")
+                        flattened_data[f"ceqv_{i}_image"] = ceqv.get("image", "")
+ 
+                    # Ensure ceqv_1 to ceqv_59 are included
+                    for i in range(1, 60):
+                        flattened_data.setdefault(f"ceqv_{i}_category_code", "")
+                        flattened_data.setdefault(f"ceqv_{i}_description", "")
+                        flattened_data.setdefault(f"ceqv_{i}_remarks", "")
+                        flattened_data.setdefault(f"ceqv_{i}_severity", "")
+                        flattened_data.setdefault(f"ceqv_{i}_image", "")
+                    csv_data.append(flattened_data)
+ 
+            # Define the fixed list of fieldnames
+            fieldnames = [
+                "auditDate", "auditedDateTime", "auditor_id", "auditor_name", "controller", "createdDate",
+                "director", "duty_manager", "expiryDate", "group_head", "region", "shortdescription", "sr_manager",
+                "sr_number", "status", "superviser_comment", "supervisor", "supervisor_contact", 
+                "supervisor_id", "team", "tech_contact", "tech_ein", "tech_fullname", "tech_pt", 
+                "tech_skills", "user_action", "vehicle_number", "vendor"
+            ] + [f"ceqv_{i}_{field}" for i in range(1, 60) for field in ["category_code", "description", "remarks", "severity", "image"]]
+>>>>>>> refs/remotes/origin/main
  
             # Write the data to a CSV file
             csv_file_path = 'exported_data.csv'
@@ -988,11 +1097,19 @@ class ExportCSV(Resource):
  
             # Return the CSV file for download
             return send_file(csv_file_path, as_attachment=True)
+<<<<<<< HEAD
+=======
+        except Exception as e:
+            print(e)
+            return {"error": str(e)}, 500
+
+>>>>>>> refs/remotes/origin/main
  
         except Exception as e:
             print(e)
             return {"error": str(e)}, 500
 
+<<<<<<< HEAD
 
 
 
@@ -1142,3 +1259,37 @@ class ExportCSV(Resource):
             
             
 """            
+=======
+        
+def send_image_to_server(image_file, file_path):
+    try:
+        if image_file is None:
+            print("File data is not available")
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"File at {file_path} has been removed")
+            else:
+                print(f"No file found at {file_path} to remove")
+        else:
+            print("File data is available")
+            print("file_path ", file_path)
+            with open(file_path, 'wb') as f:
+                f.write(image_file.read())
+            print(f"File saved successfully at {file_path}")
+        return {'message': 'Image processed successfully'}
+    except Exception as e:
+        return {'error': str(e)}  
+    
+    
+    
+## This Function i used to check given file path is available or not     
+def check_file_exit(file_path):
+    try:
+        if os.path.exists(file_path):
+            return True
+        else:
+            return False
+    except Exception as e:
+        return {'error': str(e)}  
+
+>>>>>>> refs/remotes/origin/main

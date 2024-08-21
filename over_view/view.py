@@ -44,6 +44,7 @@ class OverViewReport(Resource):
                 return {"message": "Unauthorized access"}, 401
             if user.role == "auditor":
                 query["auditor_name"] = user.name
+<<<<<<< HEAD
             for date_type in ["current_date", "previous_date"]:
                 if start_date and end_date:
                     if date_type == "current_date":
@@ -87,6 +88,23 @@ class OverViewReport(Resource):
                         dict_data["revert_audits"] = dict_temp.get("revert_audits", 0) + dict_temp.get("rejected_audits", 0)
                         
         if module == "business":
+=======
+            print(query)    
+            audit_data = AuditData.objects(__raw__=query).order_by('-createdDate')
+            if audit_data:
+                for status_type in ["Pending", "Approved", "Revert","Submitted","Rejected"]:
+                    dict_data[f"{status_type.lower()}_audits"] = sum(
+                        1 for audit in audit_data
+                        if audit.status == status_type
+                    )
+            total_audits = dict_data["pending_audits"] + dict_data["submitted_audits"] + dict_data["revert_audits"] + dict_data["rejected_audits"] + dict_data["approved_audits"]
+            dict_data["total_audits"] = total_audits
+            dict_data["pending_audits"] = dict_data["pending_audits"] + dict_data["submitted_audits"]
+            dict_data["revert_audits"] = dict_data["revert_audits"] + dict_data["rejected_audits"]
+            del dict_data["submitted_audits"]
+            del dict_data["rejected_audits"]
+        if module == "business":            
+>>>>>>> refs/remotes/origin/main
             customer_name = data.get("customer_name")
             account_no = data.get("account_no")
             compliance = data.get("compliance")
@@ -95,6 +113,7 @@ class OverViewReport(Resource):
             if user.role not in ["audit", "supervisor", "admin"] and user.permission not in ["business", "all"]:
                 return {"message": "Unauthorized access"}, 401
             if user.role == "auditor":
+<<<<<<< HEAD
                 query["ceq_auditor_name"] = user.name   
             for date_type in ["current_date", "previous_date"]:
                 if start_date and end_date:
@@ -140,6 +159,26 @@ class OverViewReport(Resource):
                         dict_data["submitted_audits"] = dict_temp.get("submitted_audits", 0)
  
         return jsonify(dict_data)
+=======
+                query["ceq_auditor_name"] = user.name
+            print("query",query)    
+            audit_data = BusinessAudit.objects(__raw__=query).order_by('-date_of_visit')
+            if audit_data:
+                status_types = ["pending", "approved", "revert", "submitted", "rejected"]
+                for status_type in status_types:
+                    dict_data[f"{status_type}_audits"] = sum(
+                        1 for audit in audit_data
+                        if audit.status.lower() == status_type
+                    )
+                total_audits = dict_data["pending_audits"] + dict_data["submitted_audits"] + dict_data["revert_audits"] + dict_data["rejected_audits"] + dict_data["approved_audits"]
+                dict_data["total_audits"] = total_audits
+                dict_data["pending_audits"] = dict_data["pending_audits"] + dict_data["submitted_audits"]
+                dict_data["revert_audits"] = dict_data["revert_audits"] + dict_data["rejected_audits"]
+                del dict_data["submitted_audits"]
+                del dict_data["rejected_audits"]
+
+        return jsonify(dict_data)          
+>>>>>>> refs/remotes/origin/main
 
 class AuditDashboardYear(Resource):
     @jwt_required()
@@ -152,6 +191,7 @@ class AuditDashboardYear(Resource):
         region = request.json.get("region")
         year = request.json.get("year")
         status = request.json.get("status")
+<<<<<<< HEAD
         current_year = datetime.now().year
         years = list(range(2023, current_year+1))
         years_data = {}
@@ -216,6 +256,61 @@ class AuditDashboardYear(Resource):
                         data["approved_count"] = rec["count"]
                 years_data[year] = data
         return jsonify(years_data)
+=======
+        start_date = request.json.get("start_date")
+        # Calculate the start date for six months ago
+        if start_date != "":
+            date_obj = datetime.strptime(start_date,'%Y-%m-%d')
+            end_date = datetime.strptime(start_date, '%Y-%m-%d')
+            month_ago = date_obj - timedelta(days=30)
+            start_date_str = month_ago.strftime('%Y-%m-%d %H:%M:%S')
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d %H:%M:%S')
+        else:
+            month_ago = current_date - timedelta(days=30)
+            start_date = datetime.combine(month_ago, time.min)
+        month_data = {}
+        match_condition = {"createdDate": {"$gte": start_date, "$lte": end_date},"status": {"$in": ["Approved", "Submitted", "Pending", "Rejected", "Revert"]}}
+        if region != "":
+            match_condition["region"] = region
+        # if user.role == "auditor":
+        #     match_condition["auditor_name"] = user.name
+        if module == "consumer":
+            print(start_date,end_date)
+            print(type(start_date),type((end_date)))
+            records = get_audit_statistics(match_condition)
+            print("changes",records)
+            for rec in records:
+                print(rec["status"])
+                if rec["status"] == "Revert/Rejected":
+                    month_data["revert_percentage"] = round(rec["percentage"], 2)
+                    month_data["revert_count"] = rec["count"]
+                if rec["status"] == "Submitted/Pending":
+                    month_data["pending_percentage"] = round(rec["percentage"], 2)
+                    month_data["pending_count"] = rec["count"]
+                if rec["status"] == "Approved":
+                    month_data["approved_percentage"] = round(rec["percentage"], 2)
+                    month_data["approved_count"] = rec["count"]
+        match_condition = {"date_of_visit": {"$gte": start_date, "$lte": end_date},"status": {"$in": ["Approved", "Submitted", "Pending", "Rejected", "Revert"]}}
+        if region != "":
+            match_condition["region"] = region
+        # if user.role == "auditor":
+        #     match_condition["ceq_auditor_name"] = user.name
+        if module == "business":
+            records = get_bussines_statistics(match_condition)
+            print(start_date,end_date)
+            for rec in records:
+                if rec["status"] == "revert/rejected":
+                    month_data["revert_percentage"] = round(rec["percentage"], 2)
+                    month_data["revert_count"] = rec["count"]
+                if rec["status"] == "submitted/pending":
+                    month_data["pending_percentage"] = round(rec["percentage"], 2)
+                    month_data["pending_count"] = rec["count"]
+                if rec["status"] == "approved":
+                    month_data["approved_percentage"] = round(rec["percentage"], 2)
+                    month_data["approved_count"] = rec["count"]
+
+        return jsonify(month_data)
+>>>>>>> refs/remotes/origin/main
 
 
 class AuditDashboardQuarter(Resource):

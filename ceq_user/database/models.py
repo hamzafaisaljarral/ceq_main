@@ -133,7 +133,10 @@ class AuditData(Document):
 class BusinessAudit(Document):
     sn = IntField(default=0)
     date_of_visit = DateTimeField(default=None)
+<<<<<<< HEAD
     date_and_time = DateTimeField(default=None)
+=======
+>>>>>>> refs/remotes/origin/main
     sr_dkt_no = StringField(default="")
     region = StringField(default="")
     sub_region = StringField(default="")
@@ -188,6 +191,7 @@ class BusinessAudit(Document):
     superviser_comment = StringField(default="")
     signature = StringField(default="")
     
+<<<<<<< HEAD
     def saves(self, *args, **kwargs):
         # Ensure default values are assigned if there's a ValueError
         for field_name, field in self._fields.items():
@@ -205,11 +209,14 @@ class BusinessAudit(Document):
                 setattr(self, field_name, default)
         super(BusinessAudit, self).saves(*args, **kwargs)
     
+=======
+>>>>>>> refs/remotes/origin/main
     
 class Companies(Document):
     company_name = StringField(default="")
     image_url = StringField(default="")
     
+<<<<<<< HEAD
 
 class FdhViolations(EmbeddedDocument):
     category_code = fields.StringField(default='')
@@ -271,3 +278,6 @@ class NewFdh(Document):
                     default = default()
                 setattr(self, field_name, default)
         super(NewFdh, self).save(*args, **kwargs)
+=======
+    
+>>>>>>> refs/remotes/origin/main
